@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type FocusEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
+import { apiRequest } from "@/lib/api";
 import { validatePassword, validateUniversityEmail } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
@@ -13,15 +15,19 @@ type LoginValues = { email: string; password: string };
 type LoginErrors = Partial<Record<keyof LoginValues, string>>;
 
 const validators = { email: validateUniversityEmail, password: validatePassword };
+type AuthResponse = { access_token: string };
 
 export function LoginForm() {
+  const router = useRouter();
   const [values, setValues] = useState<LoginValues>({ email: "", password: "" });
   const [errors, setErrors] = useState<LoginErrors>({});
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const update = (field: keyof LoginValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
     setSuccess(false);
+    setSubmitError("");
     if (errors[field]) setErrors((current) => ({ ...current, [field]: validators[field](value) }));
   };
 
@@ -29,15 +35,22 @@ export function LoginForm() {
     setErrors((current) => ({ ...current, [field]: validators[field](event.target.value) }));
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors: LoginErrors = {
       email: validateUniversityEmail(values.email),
       password: validatePassword(values.password),
     };
     setErrors(nextErrors);
-    const valid = !Object.values(nextErrors).some(Boolean);
-    setSuccess(valid);
+    if (Object.values(nextErrors).some(Boolean)) return;
+    try {
+      const result = await apiRequest<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(values) });
+      window.localStorage.setItem("access_token", result.access_token);
+      setSuccess(true);
+      router.push("/dashboard");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Login failed");
+    }
   };
 
   return (
@@ -54,6 +67,7 @@ export function LoginForm() {
         <Button className="mt-8 h-12 justify-start px-5" fullWidth type="submit">Войти</Button>
         {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Данные заполнены корректно. Авторизация будет подключена к API.</p>}
       </form>
+      {submitError && <p className="mt-3 text-xs font-medium text-[#D94A5C]" role="alert">{submitError}</p>}
       <div className="mt-7"><SsoSection /></div>
     </>
   );

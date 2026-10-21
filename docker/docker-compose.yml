@@ -1,3 +1,5 @@
+name: campus-space
+
 services:
   frontend:
     build:
@@ -19,6 +21,9 @@ services:
       dockerfile: docker/backend.Dockerfile
     env_file:
       - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
     volumes:
@@ -36,6 +41,9 @@ services:
     command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
     env_file:
       - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     volumes:
       - ../backend:/app
     depends_on:
@@ -49,7 +57,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-campus_space}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-campus_space}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -72,4 +80,3 @@ services:
 volumes:
   frontend_node_modules:
   postgres_data:
-

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type FocusEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
+import { apiRequest } from "@/lib/api";
 import { validateFullName, validatePassword, validateUniversityEmail } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
@@ -13,27 +15,42 @@ type RegisterValues = { fullName: string; email: string; password: string; role:
 type Field = "fullName" | "email" | "password";
 type RegisterErrors = Partial<Record<keyof RegisterValues, string>>;
 const validators = { fullName: validateFullName, email: validateUniversityEmail, password: validatePassword };
+type AuthResponse = { access_token: string };
 
 export function RegisterForm() {
+  const router = useRouter();
   const [values, setValues] = useState<RegisterValues>({ fullName: "", email: "", password: "", role: "student", terms: false });
   const [errors, setErrors] = useState<RegisterErrors>({});
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const update = (field: Field, value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
     setSuccess(false);
+    setSubmitError("");
     if (errors[field]) setErrors((current) => ({ ...current, [field]: validators[field](value) }));
   };
 
   const blur = (field: Field) => (event: FocusEvent<HTMLInputElement>) => setErrors((current) => ({ ...current, [field]: validators[field](event.target.value) }));
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors: RegisterErrors = {
       fullName: validateFullName(values.fullName), email: validateUniversityEmail(values.email), password: validatePassword(values.password), terms: values.terms ? "" : "Необходимо принять правила и политику конфиденциальности",
     };
     setErrors(nextErrors);
-    setSuccess(!Object.values(nextErrors).some(Boolean));
+    if (Object.values(nextErrors).some(Boolean)) return;
+    try {
+      const result = await apiRequest<AuthResponse>("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ full_name: values.fullName, email: values.email, password: values.password, role: values.role }),
+      });
+      window.localStorage.setItem("access_token", result.access_token);
+      setSuccess(true);
+      router.push("/dashboard");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Registration failed");
+    }
   };
 
   return (
@@ -81,6 +98,7 @@ export function RegisterForm() {
         <Button className="mt-7 h-12 justify-start px-5" fullWidth type="submit">Создать аккаунт</Button>
         {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Данные заполнены корректно. Регистрация будет подключена к API.</p>}
       </form>
+      {submitError && <p className="mt-3 text-xs font-medium text-[#D94A5C]" role="alert">{submitError}</p>}
       <SsoSection />
     </>
   );

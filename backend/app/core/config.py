@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://campus_space:campus_space@localhost:5432/campus_space"
     redis_url: str = "redis://localhost:6379/0"
     backend_cors_origins: str = "http://localhost:3000"
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+    cookie_secure: bool = False
 
     @property
     def cors_origins(self) -> list[str]:
