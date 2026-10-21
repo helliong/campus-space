@@ -1,0 +1,75 @@
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    env_file:
+      - ../.env
+    volumes:
+      - ../backend:/app
+    depends_on:
+      - backend
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-campus_space}
+      POSTGRES_USER: ${POSTGRES_USER:-campus_space}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-campus_space}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  frontend_node_modules:
+  postgres_data:
+
