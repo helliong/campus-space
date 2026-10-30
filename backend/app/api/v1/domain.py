@@ -45,11 +45,11 @@ def booking_options() -> tuple[Load, ...]:
     )
 
 
-async def occupied_targets(db: AsyncSession, at: datetime) -> tuple[set[UUID], set[UUID]]:
+async def occupied_targets(db: AsyncSession, at: datetime, until: datetime | None = None) -> tuple[set[UUID], set[UUID]]:
     result = await db.scalars(
         select(Booking).where(
             Booking.status.in_(ACTIVE_BOOKING_STATUSES),
-            Booking.starts_at <= at,
+            Booking.starts_at < until if until is not None else Booking.starts_at <= at,
             Booking.ends_at > at,
         )
     )
@@ -166,8 +166,17 @@ async def list_spaces(
     space_type: str | None = None,
     only_available: bool = False,
     at: datetime | None = None,
+    until: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[SpaceResponse]:
+    at = at or datetime.now(UTC)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    if until is not None:
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=UTC)
+        if until <= at:
+            raise HTTPException(status_code=422, detail="until must be after at")
     query = select(Space).join(Space.floor).join(Floor.building).options(*space_options()).order_by(Space.code)
     if building:
         query = query.where(Floor.building.has(code=building))
@@ -176,7 +185,7 @@ async def list_spaces(
     if space_type:
         query = query.where(Space.space_type == space_type)
     spaces = (await db.scalars(query)).unique().all()
-    busy_spaces, busy_workplaces = await occupied_targets(db, at or datetime.now(UTC))
+    busy_spaces, busy_workplaces = await occupied_targets(db, at, until)
     result = [serialize_space(space, busy_spaces, busy_workplaces) for space in spaces]
     return [space for space in result if space.is_available] if only_available else result
 

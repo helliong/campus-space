@@ -62,11 +62,17 @@ function initialsFromCode(code: string) {
 
 export function SpaceMapWorkspace({ authenticated, initialBooking }: { authenticated: boolean; initialBooking?: InitialBooking }) {
   const router = useRouter();
-  const { data: spaces, loading, error, reload } = useApiData<Space[]>("/spaces");
   const [selectedId, setSelectedId] = useState("");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
   const [selectedDate, setSelectedDate] = useState(initialBooking?.date && /^\d{4}-\d{2}-\d{2}$/.test(initialBooking.date) ? initialBooking.date : localDate());
   const [selectedTime, setSelectedTime] = useState(initialBooking?.slot && /^\d{2}:\d{2}$/.test(initialBooking.slot) ? initialBooking.slot : nextHalfHour());
+  const availabilityPath = useMemo(() => {
+    const startsAt = new Date(`${selectedDate}T${selectedTime}:00`);
+    if (Number.isNaN(startsAt.getTime())) return "/spaces";
+    const until = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    return `/spaces?${new URLSearchParams({ at: startsAt.toISOString(), until: until.toISOString() })}`;
+  }, [selectedDate, selectedTime]);
+  const { data: spaces, loading, error, reload } = useApiData<Space[]>(availabilityPath);
   const [building, setBuilding] = useState("");
   const [floor, setFloor] = useState<number | "">("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
@@ -476,8 +482,8 @@ function WorkplacePlan({ space, selectedId, onSelect }: { space: Space; selected
           {workplaces.slice(group * 6, group * 6 + 6).map((workplace) => (
             <button
               aria-label={`${workplace.code}: ${workplace.is_available ? "свободно" : "занято"}`}
-              aria-pressed={selectedId === workplace.id}
-              className={cn("pointer-events-auto relative flex h-7 min-w-0 items-center justify-center rounded-md border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2", selectedId === workplace.id ? "border-brand bg-brand text-white" : workplace.is_available ? "border-[#D8DEE8] bg-white text-[#22B8A7] hover:border-brand" : "cursor-not-allowed border-[#D8DEE8] bg-[#F2F4F7] text-[#98A2B3]")}
+              aria-pressed={selectedId === workplace.id && workplace.is_available}
+              className={cn("pointer-events-auto relative flex h-7 min-w-0 items-center justify-center rounded-md border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2", selectedId === workplace.id && workplace.is_available ? "border-brand bg-brand text-white" : workplace.is_available ? "border-[#D8DEE8] bg-white text-[#22B8A7] hover:border-brand" : "cursor-not-allowed border-[#D8DEE8] bg-[#F2F4F7] text-[#98A2B3]")}
               disabled={!workplace.is_available}
               key={workplace.id}
               onClick={() => onSelect(workplace.id)}
@@ -674,7 +680,7 @@ function SpaceDetails({ selected, selectedWorkplaceId, onWorkplace, selectedDate
         {selected.description && <p className="mt-3 text-xs leading-5 text-[#667085]">{selected.description}</p>}
         <div className="mt-4 flex flex-wrap gap-2"><Feature icon={Users} label={`${selected.capacity} мест`} />{selected.amenities.slice(0, 3).map((amenity) => <Feature icon={amenity.toLowerCase().includes("проектор") ? Projector : Monitor} key={amenity} label={amenity} />)}</div>
 
-        {selected.workplaces.length > 0 && <><div className="my-5 h-px bg-[#E7E9EE]" /><h3 className="text-xs font-bold text-ink">Выберите рабочее место</h3><div className="mt-3 grid grid-cols-3 gap-2">{selected.workplaces.map((workplace) => <button aria-pressed={selectedWorkplaceId === workplace.id} className={cn("h-9 rounded-lg border text-[10px] font-semibold", !workplace.is_available && "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]", workplace.is_available && selectedWorkplaceId !== workplace.id && "border-[#DFE3E9] text-[#475467] hover:border-brand", selectedWorkplaceId === workplace.id && "border-brand bg-brand text-white")} disabled={!workplace.is_available} key={workplace.id} onClick={() => onWorkplace(workplace.id)} type="button">{workplace.code}</button>)}</div></>}
+        {selected.workplaces.length > 0 && <><div className="my-5 h-px bg-[#E7E9EE]" /><h3 className="text-xs font-bold text-ink">Выберите рабочее место</h3><div className="mt-3 grid grid-cols-3 gap-2">{selected.workplaces.map((workplace) => <button aria-pressed={selectedWorkplaceId === workplace.id && workplace.is_available} className={cn("h-9 rounded-lg border text-[10px] font-semibold", !workplace.is_available && "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]", workplace.is_available && selectedWorkplaceId !== workplace.id && "border-[#DFE3E9] text-[#475467] hover:border-brand", selectedWorkplaceId === workplace.id && workplace.is_available && "border-brand bg-brand text-white")} disabled={!workplace.is_available} key={workplace.id} onClick={() => onWorkplace(workplace.id)} type="button">{workplace.code}</button>)}</div></>}
 
         <div className="mt-5 rounded-xl bg-[#F5F6FF] p-3"><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Ваша бронь</p><p className="mt-1.5 text-xs font-bold text-ink">{selectedDate} · {selectedTime}</p><p className="mt-1 text-[10px] text-[#667085]">{selectedWorkplace ? `${selectedWorkplace.code} · ` : ""}{selected.name} · 30 минут</p></div>
         {bookingMessage && <p className={cn("mt-3 rounded-xl px-3 py-2.5 text-xs font-medium", bookingMessage.includes("подтверждено") || bookingMessage.includes("отправлена") ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#FFF1F3] text-[#C83E52]")} role="status">{bookingMessage}</p>}
