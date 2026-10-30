@@ -34,6 +34,8 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     bookings: Mapped[list[Booking]] = relationship(back_populates="user")
+    favorites: Mapped[list[Favorite]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reviews: Mapped[list[Review]] = relationship(back_populates="user", cascade="all, delete-orphan")
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user")
 
 
@@ -85,6 +87,8 @@ class Space(TimestampMixin, Base):
     workplaces: Mapped[list[Workplace]] = relationship(back_populates="space")
     amenities: Mapped[list[SpaceAmenity]] = relationship(back_populates="space")
     bookings: Mapped[list[Booking]] = relationship(back_populates="space")
+    favorites: Mapped[list[Favorite]] = relationship(back_populates="space", cascade="all, delete-orphan")
+    reviews: Mapped[list[Review]] = relationship(back_populates="space", cascade="all, delete-orphan")
 
 
 class Workplace(TimestampMixin, Base):
@@ -148,6 +152,44 @@ class Booking(TimestampMixin, Base):
     user: Mapped[User] = relationship(back_populates="bookings")
     space: Mapped[Space | None] = relationship(back_populates="bookings")
     workplace: Mapped[Workplace | None] = relationship(back_populates="bookings")
+    review: Mapped[Review | None] = relationship(back_populates="booking", uselist=False)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("user_id", "space_id", name="uq_favorites_user_space"),)
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    space_id: Mapped[UUID] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="favorites")
+    space: Mapped[Space] = relationship(back_populates="favorites")
+
+
+class Review(TimestampMixin, Base):
+    __tablename__ = "reviews"
+    __table_args__ = (
+        CheckConstraint("score BETWEEN 1 AND 5", name="ck_reviews_score"),
+        CheckConstraint("cleanliness BETWEEN 1 AND 5", name="ck_reviews_cleanliness"),
+        CheckConstraint("equipment BETWEEN 1 AND 5", name="ck_reviews_equipment"),
+        CheckConstraint("comfort BETWEEN 1 AND 5", name="ck_reviews_comfort"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    space_id: Mapped[UUID] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"), index=True)
+    booking_id: Mapped[UUID] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), unique=True, index=True)
+    score: Mapped[int] = mapped_column(Integer)
+    cleanliness: Mapped[int] = mapped_column(Integer)
+    equipment: Mapped[int] = mapped_column(Integer)
+    comfort: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    user: Mapped[User] = relationship(back_populates="reviews")
+    space: Mapped[Space] = relationship(back_populates="reviews")
+    booking: Mapped[Booking] = relationship(back_populates="review")
 
 
 class RefreshToken(Base):

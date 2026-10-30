@@ -9,23 +9,9 @@ import {
   MapPcSeat,
   MapRoom,
   SelectField,
-  SpaceCard,
   TimeSlot,
   type AvailabilityStatus,
 } from "@/components/ui";
-
-const space = {
-  id: "k-214",
-  name: "К-214",
-  type: "Коворкинг",
-  floor: 2,
-  seats: 12,
-  computers: 6,
-  features: ["Проектор"],
-  rating: 4.8,
-  review: "Комфортно для команд",
-  status: "available" as const,
-};
 
 const statuses: AvailabilityStatus[] = ["available", "partial", "busy", "pending", "restricted"];
 
@@ -50,10 +36,7 @@ export default function UiKitPage() {
           <TimeSlot>14:00</TimeSlot><TimeSlot state="selected">14:30</TimeSlot><TimeSlot state="busy">15:00</TimeSlot><TimeSlot state="pending">15:30</TimeSlot>
         </Showcase>
         <Showcase title="Floor plan elements">
-          <MapRoom meta="12 мест · ПК" name="К-214" /><MapDesk /><MapPcSeat />
-        </Showcase>
-        <Showcase title="Space cards">
-          <SpaceCard space={space} /><SpaceCard space={space} variant="booking" />
+          <MapRoom meta="Описание" name="Помещение" /><MapDesk /><MapPcSeat />
         </Showcase>
       </div>
     </main>

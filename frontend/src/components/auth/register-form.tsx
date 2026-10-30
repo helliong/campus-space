@@ -6,6 +6,7 @@ import { useState, type FocusEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
+import { getSafeRedirectPath } from "@/lib/auth";
 import { validateFullName, validatePassword, validateUniversityEmail } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
@@ -17,7 +18,7 @@ type RegisterErrors = Partial<Record<keyof RegisterValues, string>>;
 const validators = { fullName: validateFullName, email: validateUniversityEmail, password: validatePassword };
 type AuthResponse = { access_token: string };
 
-export function RegisterForm() {
+export function RegisterForm({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
   const router = useRouter();
   const [values, setValues] = useState<RegisterValues>({ fullName: "", email: "", password: "", role: "student", terms: false });
   const [errors, setErrors] = useState<RegisterErrors>({});
@@ -47,7 +48,7 @@ export function RegisterForm() {
       });
       window.localStorage.setItem("access_token", result.access_token);
       setSuccess(true);
-      router.push("/dashboard");
+      router.replace(getSafeRedirectPath(redirectTo));
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Registration failed");
     }
@@ -57,7 +58,7 @@ export function RegisterForm() {
     <>
       <form className="mt-8" noValidate onSubmit={submit}>
         <div className="space-y-4">
-          <AuthField autoComplete="name" error={errors.fullName} id="full-name" label="Имя и фамилия" name="fullName" onBlur={blur("fullName")} onChange={(event) => update("fullName", event.target.value)} placeholder="Например, Анна Иванова" value={values.fullName} />
+          <AuthField autoComplete="name" error={errors.fullName} id="full-name" label="Имя и фамилия" name="fullName" onBlur={blur("fullName")} onChange={(event) => update("fullName", event.target.value)} placeholder="Имя Фамилия" value={values.fullName} />
           <AuthField autoComplete="email" error={errors.email} id="email" label="Университетская почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@university.ru" type="email" value={values.email} />
           <AuthField autoComplete="new-password" error={errors.password} id="password" label="Пароль" name="password" onBlur={blur("password")} onChange={(event) => update("password", event.target.value)} placeholder="Не менее 8 символов" type="password" value={values.password} />
           <label className="block text-xs font-semibold text-ink" htmlFor="role">Роль<select className="mt-2 h-[50px] w-full rounded-xl border border-[#E4E7EC] bg-white px-[15px] text-sm font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10" id="role" name="role" onChange={(event) => setValues((current) => ({ ...current, role: event.target.value }))} value={values.role}><option value="student">Студент</option><option value="teacher">Преподаватель</option></select></label>
@@ -96,7 +97,7 @@ export function RegisterForm() {
         </label>
         {errors.terms && <p className="mt-1.5 text-[11px] font-medium text-[#D94A5C]" id="terms-error" role="alert">{errors.terms}</p>}
         <Button className="mt-7 h-12 justify-start px-5" fullWidth type="submit">Создать аккаунт</Button>
-        {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Данные заполнены корректно. Регистрация будет подключена к API.</p>}
+        {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Аккаунт создан. Перенаправляем…</p>}
       </form>
       {submitError && <p className="mt-3 text-xs font-medium text-[#D94A5C]" role="alert">{submitError}</p>}
       <SsoSection />

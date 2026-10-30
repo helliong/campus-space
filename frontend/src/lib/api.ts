@@ -1,5 +1,12 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const accessToken = typeof window === "undefined" ? null : window.localStorage.getItem("access_token");
   const response = await fetch(`${API_URL}${path}`, {
@@ -10,8 +17,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(body?.detail ?? `API request failed: ${response.status}`);
+    throw new ApiError(body?.detail ?? `API request failed: ${response.status}`, response.status);
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }

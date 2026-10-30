@@ -6,6 +6,7 @@ import { useState, type FocusEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
+import { getSafeRedirectPath } from "@/lib/auth";
 import { validatePassword, validateUniversityEmail } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
@@ -17,7 +18,7 @@ type LoginErrors = Partial<Record<keyof LoginValues, string>>;
 const validators = { email: validateUniversityEmail, password: validatePassword };
 type AuthResponse = { access_token: string };
 
-export function LoginForm() {
+export function LoginForm({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
   const router = useRouter();
   const [values, setValues] = useState<LoginValues>({ email: "", password: "" });
   const [errors, setErrors] = useState<LoginErrors>({});
@@ -47,7 +48,7 @@ export function LoginForm() {
       const result = await apiRequest<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(values) });
       window.localStorage.setItem("access_token", result.access_token);
       setSuccess(true);
-      router.push("/dashboard");
+      router.replace(getSafeRedirectPath(redirectTo));
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Login failed");
     }
@@ -65,7 +66,7 @@ export function LoginForm() {
           <Link className="text-xs font-semibold text-brand hover:text-brand-hover" href="/forgot-password">Забыли пароль?</Link>
         </div>
         <Button className="mt-8 h-12 justify-start px-5" fullWidth type="submit">Войти</Button>
-        {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Данные заполнены корректно. Авторизация будет подключена к API.</p>}
+        {success && <p className="mt-3 rounded-xl bg-[#E8F8F5] px-4 py-3 text-xs font-medium text-[#168C7F]" role="status">Вход выполнен. Перенаправляем…</p>}
       </form>
       {submitError && <p className="mt-3 text-xs font-medium text-[#D94A5C]" role="alert">{submitError}</p>}
       <div className="mt-7"><SsoSection /></div>

@@ -1,0 +1,18 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="140" height="124" viewBox="0 0 140 124" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group 2">
+<rect id="Meeting zone 02" opacity="0.55" x="0.5" y="0.5" width="139" height="123" rx="9.5" fill="white" stroke="#D8DEE8" stroke-dasharray="6 4"/>
+<rect id="Shared table" x="58.5" y="12.5" width="27" height="99" rx="9.5" fill="white" stroke="#D8DEE8"/>
+<rect id="Seat / Busy 7" x="12.5" y="16.5" width="27" height="23" rx="5.5" fill="white" stroke="#D8DEE8"/>
+<circle id="Availability 7" cx="26" cy="28" r="5" fill="#D5DAE1"/>
+<rect id="Seat / Free 8" x="104.5" y="16.5" width="27" height="23" rx="5.5" fill="white" stroke="#D8DEE8"/>
+<circle id="Availability 8" cx="118" cy="28" r="5" fill="#22B8A7"/>
+<rect id="Seat / Free 9" x="12.5" y="48.5" width="27" height="23" rx="5.5" fill="white" stroke="#D8DEE8"/>
+<circle id="Availability 9" cx="26" cy="60" r="5" fill="#22B8A7"/>
+<rect id="Seat / Free 10" x="104.5" y="48.5" width="27" height="23" rx="5.5" fill="white" stroke="#D8DEE8"/>
+<circle id="Availability 10" cx="118" cy="60" r="5" fill="#22B8A7"/>
+<rect id="Seat / Free 11" x="12.5" y="80.5" width="27" height="23" rx="5.5" fill="white" stroke="#D8DEE8"/>
+<circle id="Availability 11" cx="26" cy="92" r="5" fill="#22B8A7"/>
+<rect id="Seat / Selected 12" x="104.5" y="80.5" width="27" height="23" rx="5.5" fill="#3346C8" stroke="#3346C8"/>
+<circle id="Availability 12" cx="118" cy="92" r="5" fill="white"/>
+</g>
+</svg>

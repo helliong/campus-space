@@ -9,505 +9,481 @@ import {
   Heart,
   List,
   Map as MapIcon,
-  Minus,
+  MapPin,
   Monitor,
-  Plus,
   Projector,
   RotateCcw,
   Star,
   Users,
 } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button, Logo, TimeSlot } from "@/components/ui";
+import { AccountHeader as AuthenticatedHeader } from "@/components/layout/account-header";
+import { SiteHeader } from "@/components/layout/site-header";
+import { Button } from "@/components/ui";
+import { useApiData } from "@/hooks/use-api-data";
+import { apiRequest } from "@/lib/api";
+import { ensureAuthenticated } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { spaceTypeLabel } from "@/lib/format";
+import type { Booking, Space } from "@/lib/types";
 
-type RoomStatus = "free" | "partial" | "busy" | "pending";
-type FeatureType = "users" | "monitor" | "projector";
-
-type Room = {
-  id: string;
-  title: string;
-  kind: string;
-  meta: string;
-  seats: number;
-  features: { label: string; type: FeatureType }[];
-  status: RoomStatus;
-  statusLabel: string;
+type InitialBooking = {
+  room?: string;
+  slot?: string;
+  date?: string;
+  pc?: string;
+  resume?: boolean;
 };
 
-const rooms: Room[] = [
-  {
-    id: "A-201",
-    title: "А-201",
-    kind: "Аудитория",
-    meta: "12 мест · Проектор",
-    seats: 12,
-    features: [
-      { label: "12 мест", type: "users" },
-      { label: "Проектор", type: "projector" },
-      { label: "Маркерная доска", type: "monitor" },
-    ],
-    status: "free",
-    statusLabel: "Свободно",
-  },
-  {
-    id: "A-202",
-    title: "А-202",
-    kind: "Аудитория",
-    meta: "12 мест · Доска",
-    seats: 12,
-    features: [
-      { label: "12 мест", type: "users" },
-      { label: "Маркерная доска", type: "projector" },
-    ],
-    status: "busy",
-    statusLabel: "Занято до 15:30",
-  },
-  {
-    id: "Л-203",
-    title: "Л-203",
-    kind: "Лаборатория",
-    meta: "20 мест · ПК",
-    seats: 20,
-    features: [
-      { label: "20 мест", type: "users" },
-      { label: "ПК места", type: "monitor" },
-      { label: "Маркерная доска", type: "projector" },
-    ],
-    status: "pending",
-    statusLabel: "По заявке",
-  },
-  {
-    id: "К-214",
-    title: "К-214",
-    kind: "Коворкинг",
-    meta: "12 мест · 12 ПК",
-    seats: 12,
-    features: [
-      { label: "12 мест", type: "users" },
-      { label: "12 ПК", type: "monitor" },
-      { label: "Wi-Fi 6", type: "projector" },
-    ],
-    status: "free",
-    statusLabel: "Свободно",
-  },
-  {
-    id: "А-208",
-    title: "А-208",
-    kind: "Аудитория",
-    meta: "4 места · Круглый стол",
-    seats: 4,
-    features: [
-      { label: "4 места", type: "users" },
-      { label: "Круглый стол", type: "projector" },
-    ],
-    status: "partial",
-    statusLabel: "Свободно с 16:00",
-  },
-  {
-    id: "П-2",
-    title: "Переговорная П-2",
-    kind: "Переговорная",
-    meta: "6 мест · Экран",
-    seats: 6,
-    features: [
-      { label: "6 мест", type: "users" },
-      { label: "ТВ-экран", type: "monitor" },
-      { label: "Конференц-связь", type: "projector" },
-    ],
-    status: "free",
-    statusLabel: "Свободно",
-  },
-];
+function localDate() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
-const floors = [
-  { floor: 4, free: 7 },
-  { floor: 3, free: 5 },
-  { floor: 2, free: 8 },
-  { floor: 1, free: 3 },
-];
+function nextHalfHour() {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() < 30 ? 30 : 60);
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
 
-const statusStyles: Record<RoomStatus, string> = {
-  free: "border-[#22B8A7] bg-[#F2FCFA]",
-  partial: "border-[#E8A317] bg-[#FFF9EB]",
-  busy: "border-[#CBD2DC] bg-[#F1F3F5]",
-  pending: "border-[#8792EC] bg-[#F2F3FF]",
-};
+function bookingPath(spaceId: string, date: string, slot: string, workplaceId: string, resume = false) {
+  const params = new URLSearchParams({ room: spaceId, date, slot });
+  if (workplaceId) params.set("pc", workplaceId);
+  if (resume) params.set("book", "1");
+  return `/spaces?${params.toString()}`;
+}
 
-const statusDots: Record<RoomStatus, string> = {
-  free: "/icons/status-free.svg",
-  partial: "/icons/map/status-partial.svg",
-  busy: "/icons/status-busy.svg",
-  pending: "/icons/status-pending.svg",
-};
+function initialsFromCode(code: string) {
+  return code.trim().charAt(0).toUpperCase() || "•";
+}
 
-export function SpaceMapWorkspace() {
-  const [floor, setFloor] = useState(2);
+export function SpaceMapWorkspace({ authenticated, initialBooking }: { authenticated: boolean; initialBooking?: InitialBooking }) {
+  const router = useRouter();
+  const { data: spaces, loading, error, reload } = useApiData<Space[]>("/spaces");
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
+  const [selectedDate, setSelectedDate] = useState(initialBooking?.date && /^\d{4}-\d{2}-\d{2}$/.test(initialBooking.date) ? initialBooking.date : localDate());
+  const [selectedTime, setSelectedTime] = useState(initialBooking?.slot && /^\d{2}:\d{2}$/.test(initialBooking.slot) ? initialBooking.slot : nextHalfHour());
+  const [building, setBuilding] = useState("");
+  const [floor, setFloor] = useState<number | "">("");
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [view, setView] = useState<"map" | "list">("map");
-  const [selectedRoom, setSelectedRoom] = useState("К-214");
-  const [selectedSlot, setSelectedSlot] = useState("14:30");
-  const [onlyFree, setOnlyFree] = useState(false);
-  const [favorite, setFavorite] = useState(false);
-  const [zoom, setZoom] = useState(100);
-  const [booked, setBooked] = useState(false);
-  const [selectedPc, setSelectedPc] = useState("ПК-12");
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [bookingPending, setBookingPending] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState("");
+  const resumeAttempted = useRef(false);
 
-  const selected = rooms.find((room) => room.id === selectedRoom) ?? rooms[3];
-  const visibleRooms = onlyFree ? rooms.filter((room) => room.status === "free") : rooms;
+  useEffect(() => {
+    if (!spaces?.length || selectedId || !initialBooking?.room) return;
+    const requested = spaces.find((space) => space.id === initialBooking?.room || space.code === initialBooking?.room);
+    if (!requested) return;
+    setSelectedId(requested.id);
+    if (requested && initialBooking?.pc) {
+      const workplace = requested.workplaces.find((item) => item.id === initialBooking.pc || item.code === initialBooking.pc);
+      setSelectedWorkplaceId(workplace?.id ?? "");
+    }
+  }, [initialBooking?.pc, initialBooking?.room, selectedId, spaces]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    let active = true;
+    const load = async () => {
+      try {
+        if (!(await ensureAuthenticated())) return;
+        const favorites = await apiRequest<Space[]>("/favorites");
+        if (active) setFavoriteIds(new Set(favorites.map((space) => space.id)));
+      } catch {
+        // Favorites are secondary; the catalog remains available if they fail to load.
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [authenticated]);
+
+  const buildings = useMemo(() => Array.from(new Set((spaces ?? []).map((space) => space.building_code))).sort(), [spaces]);
+  const floors = useMemo(() => Array.from(new Set((spaces ?? []).filter((space) => !building || space.building_code === building).map((space) => space.floor_number))).sort((a, b) => a - b), [building, spaces]);
+  const visibleSpaces = useMemo(() => (spaces ?? []).filter((space) =>
+    (!building || space.building_code === building)
+    && (floor === "" || space.floor_number === floor)
+    && (!onlyAvailable || space.is_available),
+  ), [building, floor, onlyAvailable, spaces]);
+  const selected = spaces?.find((space) => space.id === selectedId) ?? null;
+
+  const chooseSpace = (space: Space) => {
+    setSelectedId(space.id);
+    setSelectedWorkplaceId("");
+    setBookingMessage("");
+  };
+
+  const submitBooking = useCallback(async () => {
+    if (!selected || bookingPending) return;
+    if (selected.workplaces.length > 0 && !selected.workplaces.some((item) => item.id === selectedWorkplaceId && item.is_available)) {
+      setBookingMessage("Сначала выберите конкретное рабочее место.");
+      return;
+    }
+    setBookingPending(true);
+    setBookingMessage("");
+
+    const returnPath = bookingPath(selected.id, selectedDate, selectedTime, selectedWorkplaceId, true);
+    if (!(await ensureAuthenticated())) {
+      setBookingPending(false);
+      router.push(`/login?next=${encodeURIComponent(returnPath)}`);
+      return;
+    }
+
+    const startsAt = new Date(`${selectedDate}T${selectedTime}:00`);
+    const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
+    try {
+      const booking = await apiRequest<Booking>("/bookings", {
+        method: "POST",
+        body: JSON.stringify({
+          space_id: selectedWorkplaceId ? null : selected.id,
+          workplace_id: selectedWorkplaceId || null,
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+        }),
+      });
+      setBookingMessage(booking.status === "confirmed" ? "Бронирование подтверждено." : "Заявка отправлена на рассмотрение.");
+      router.replace(bookingPath(selected.id, selectedDate, selectedTime, selectedWorkplaceId));
+      reload();
+    } catch (reason) {
+      setBookingMessage(reason instanceof Error ? reason.message : "Не удалось создать бронирование");
+    } finally {
+      setBookingPending(false);
+    }
+  }, [bookingPending, reload, router, selected, selectedDate, selectedTime, selectedWorkplaceId]);
+
+  useEffect(() => {
+    if (!initialBooking?.resume || !selected || resumeAttempted.current) return;
+    resumeAttempted.current = true;
+    void submitBooking();
+  }, [initialBooking?.resume, selected, submitBooking]);
+
+  const toggleFavorite = async () => {
+    if (!selected) return;
+    if (!(await ensureAuthenticated())) {
+      router.push(`/login?next=${encodeURIComponent(bookingPath(selected.id, selectedDate, selectedTime, selectedWorkplaceId))}`);
+      return;
+    }
+    const isFavorite = favoriteIds.has(selected.id);
+    try {
+      await apiRequest<void>(`/favorites/${selected.id}`, { method: isFavorite ? "DELETE" : "PUT" });
+      setFavoriteIds((current) => {
+        const next = new Set(current);
+        if (isFavorite) next.delete(selected.id); else next.add(selected.id);
+        return next;
+      });
+    } catch (reason) {
+      setBookingMessage(reason instanceof Error ? reason.message : "Не удалось обновить избранное");
+    }
+  };
 
   const reset = () => {
-    setFloor(2);
-    setView("map");
-    setSelectedRoom("К-214");
-    setSelectedSlot("14:30");
-    setOnlyFree(false);
-    setZoom(100);
-    setBooked(false);
-    setSelectedPc("ПК-12");
+    setBuilding("");
+    setFloor("");
+    setOnlyAvailable(false);
   };
 
   return (
     <div className="flex flex-1 flex-col bg-canvas">
-      <AccountHeader />
-      <SearchBar onReset={reset} setView={setView} view={view} />
+      {authenticated ? <AuthenticatedHeader active="spaces" /> : <SiteHeader active="spaces" />}
 
-      <main className="mx-auto grid w-full max-w-[1600px] flex-1 items-start gap-5 p-4 xl:grid-cols-[232px_minmax(620px,1fr)_314px] xl:p-6">
-        <FiltersPanel floor={floor} onlyFree={onlyFree} setFloor={setFloor} setOnlyFree={setOnlyFree} />
-
-        <section className="min-w-0 self-start overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7E9EE] px-5 py-4">
-            <div>
-              <h1 className="text-xl font-bold text-ink">План {floor} этажа</h1>
-              <p className="mt-1 text-[11px] text-[#667085]">Нажмите на помещение или рабочее место, чтобы посмотреть детали</p>
+      <section className="border-b border-[#E4E7EC] bg-white">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-end gap-3 px-5 py-3 sm:px-8 lg:px-16">
+          <SelectFilter icon={Building2} label="Корпус" onChange={(value) => { setBuilding(value); setFloor(""); }} options={buildings} placeholder="Все корпуса" value={building} />
+          <label className="min-w-[150px] flex-1 xl:max-w-[200px]">
+            <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Дата</span>
+            <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3">
+              <CalendarDays className="size-4 text-[#667085]" />
+              <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-ink outline-none" min={localDate()} onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} />
+            </span>
+          </label>
+          <label className="min-w-[130px] flex-1 xl:max-w-[170px]">
+            <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Начало</span>
+            <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3">
+              <Clock3 className="size-4 text-[#667085]" />
+              <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-ink outline-none" onChange={(event) => setSelectedTime(event.target.value)} step="1800" type="time" value={selectedTime} />
+            </span>
+          </label>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex rounded-[10px] bg-[#F0F2F5] p-1">
+              <button aria-label="2D-карта" aria-pressed={view === "map"} className={cn("flex size-9 items-center justify-center rounded-lg", view === "map" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("map")} type="button"><MapIcon className="size-4" /></button>
+              <button aria-label="Список" aria-pressed={view === "list"} className={cn("flex size-9 items-center justify-center rounded-lg", view === "list" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("list")} type="button"><List className="size-4" /></button>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
-              {(["free", "partial", "busy", "pending"] as RoomStatus[]).map((status) => (
-                <span className="flex items-center gap-1.5 text-[10px] text-[#667085]" key={status}>
-                  <Image alt="" height={9} src={statusDots[status]} width={9} />
-                  {{ free: "Свободно", partial: "Частично", busy: "Занято", pending: "По заявке" }[status]}
-                </span>
-              ))}
-            </div>
+            <button aria-label="Сбросить фильтры" className="flex size-11 items-center justify-center rounded-[10px] border border-[#DFE3E9] text-[#667085] hover:text-brand" onClick={reset} type="button"><RotateCcw className="size-4" /></button>
           </div>
+        </div>
+      </section>
 
-          {view === "map" ? (
-            <FloorPlan
-              floor={floor}
-              onSelect={setSelectedRoom}
-              selectedRoom={selectedRoom}
-              selectedPc={selectedPc}
-              setSelectedPc={(pc) => { setSelectedPc(pc); setBooked(false); }}
-              setZoom={setZoom}
-              zoom={zoom}
-            />
-          ) : (
-            <RoomList onSelect={(id) => { setSelectedRoom(id); setView("map"); }} rooms={visibleRooms} selectedRoom={selectedRoom} />
+      <main className="mx-auto grid w-full max-w-[1600px] flex-1 items-start gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[180px_minmax(0,1fr)_300px] xl:p-6">
+        <aside className="min-w-0 rounded-[18px] border border-[#E1E5EA] bg-white p-4 lg:col-span-2 xl:col-span-1">
+          <h2 className="text-sm font-bold text-ink">Этажи</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-1">
+            <button className={cn("flex h-10 items-center rounded-[10px] px-3 text-xs font-semibold", floor === "" ? "bg-brand text-white" : "text-[#475467] hover:bg-[#F5F6FF]")} onClick={() => setFloor("")} type="button">Все этажи</button>
+            {floors.map((number) => <button className={cn("flex h-10 items-center rounded-[10px] px-3 text-xs font-semibold", floor === number ? "bg-brand text-white" : "text-[#475467] hover:bg-[#F5F6FF]")} key={number} onClick={() => setFloor(number)} type="button">{number} этаж</button>)}
+          </div>
+          <div className="my-5 h-px bg-[#E7E9EE]" />
+          <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-[#475467]">
+            <input checked={onlyAvailable} className="peer sr-only" onChange={(event) => setOnlyAvailable(event.target.checked)} type="checkbox" />
+            <span className="flex size-[18px] items-center justify-center rounded border border-[#C9CFD8] bg-white peer-checked:border-brand peer-checked:bg-brand"><Check className="size-3 text-white" /></span>
+            Только свободные
+          </label>
+        </aside>
+
+        <section className="min-w-0 overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white">
+          {view === "list" && <div className="border-b border-[#E7E9EE] px-5 py-4"><h1 className="text-xl font-bold text-ink">Пространства кампуса</h1><p className="mt-1 text-[11px] text-[#667085]">Данные о помещениях и доступности загружаются из системы.</p></div>}
+          {loading && <LoadingState />}
+          {!loading && error && <ErrorState message={error} onRetry={reload} />}
+          {!loading && !error && visibleSpaces.length === 0 && <EmptyState />}
+          {!loading && !error && visibleSpaces.length > 0 && view === "map" && (
+            <FigmaFloorMap onSelect={chooseSpace} onWorkplace={(space, id) => { chooseSpace(space); setSelectedWorkplaceId(id); }} selectedWorkplaceId={selectedWorkplaceId} selectedId={selectedId} spaces={visibleSpaces} />
+          )}
+          {!loading && !error && visibleSpaces.length > 0 && view === "list" && (
+            <div className="space-y-3 p-5">
+              {visibleSpaces.map((space) => <SpaceItem key={space.id} onSelect={() => chooseSpace(space)} selected={space.id === selectedId} space={space} />)}
+            </div>
           )}
         </section>
 
-        <RoomDetails
-          booked={booked}
-          favorite={favorite}
-          onBook={() => setBooked(true)}
-          onPcSelect={(pc) => { setSelectedPc(pc); setBooked(false); }}
-          room={selected}
-          selectedPc={selectedPc}
-          selectedSlot={selectedSlot}
-          setFavorite={setFavorite}
-          setSelectedSlot={(slot) => { setSelectedSlot(slot); setBooked(false); }}
+        <SpaceDetails
+          bookingMessage={bookingMessage}
+          bookingPending={bookingPending}
+          favorite={selected ? favoriteIds.has(selected.id) : false}
+          onBook={() => void submitBooking()}
+          onFavorite={() => void toggleFavorite()}
+          onWorkplace={(id) => { setSelectedWorkplaceId(id); setBookingMessage(""); }}
+          selected={selected}
+          selectedDate={selectedDate}
+          selectedTime={selectedTime}
+          selectedWorkplaceId={selectedWorkplaceId}
         />
       </main>
     </div>
   );
 }
 
-function AccountHeader() {
+function SelectFilter({ icon: Icon, label, value, options, placeholder, onChange }: { icon: typeof Building2; label: string; value: string; options: string[]; placeholder: string; onChange: (value: string) => void }) {
   return (
-    <header className="border-b border-[#E4E7EC] bg-white">
-      <div className="mx-auto flex min-h-20 w-full max-w-[1600px] items-center gap-8 px-5 sm:px-8 lg:px-16">
-        <Logo className="shrink-0" />
-        <nav aria-label="Основная навигация" className="hidden items-center gap-10 md:flex">
-          <Link className="text-sm font-medium text-[#667085] hover:text-ink" href="/">Главная</Link>
-          <Link className="text-sm font-semibold text-brand" href="/spaces">Пространства</Link>
-          <Link className="text-sm font-medium text-[#667085] hover:text-ink" href="/dashboard">Мои бронирования</Link>
-        </nav>
-        <Link className="ml-auto flex items-center gap-3" href="/dashboard">
-          <span className="relative size-10 shrink-0">
-            <Image alt="" height={40} src="/icons/dashboard-avatar.svg" width={40} />
-            <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-brand">АИ</span>
-          </span>
-          <span className="hidden text-left sm:block">
-            <span className="block text-xs font-semibold text-ink">Анна Иванова</span>
-            <span className="mt-0.5 block text-[10px] text-[#667085]">Студент</span>
-          </span>
-        </Link>
-      </div>
-    </header>
-  );
-}
-
-function SearchBar({ view, setView, onReset }: { view: "map" | "list"; setView: (view: "map" | "list") => void; onReset: () => void }) {
-  const fields = [
-    { label: "Корпус", value: "Корпус А", icon: Building2 },
-    { label: "Дата", value: "24 октября", icon: CalendarDays },
-    { label: "Начало", value: "14:00", icon: Clock3 },
-    { label: "Длительность", value: "2 часа", icon: Clock3 },
-  ];
-
-  return (
-    <section className="border-b border-[#E4E7EC] bg-white">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-end gap-3 px-5 py-3 sm:px-8 lg:px-16">
-        {fields.map(({ label, value, icon: Icon }) => (
-          <label className="min-w-[140px] flex-1 xl:max-w-[190px]" key={label}>
-            <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">{label}</span>
-            <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3 text-xs font-semibold text-ink">
-              <Icon aria-hidden className="size-4 text-[#667085]" />
-              {value}
-              <ChevronDown aria-hidden className="ml-auto size-3.5 text-[#98A2B3]" />
-            </span>
-          </label>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-[10px] bg-[#F0F2F5] p-1">
-            <button aria-pressed={view === "map"} className={cn("flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold", view === "map" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("map")} type="button"><MapIcon className="size-4" />Карта</button>
-            <button aria-pressed={view === "list"} className={cn("flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold", view === "list" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("list")} type="button"><List className="size-4" />Список</button>
-          </div>
-          <button aria-label="Сбросить фильтры" className="flex size-11 items-center justify-center rounded-[10px] border border-[#DFE3E9] text-[#667085] hover:text-brand" onClick={onReset} type="button"><RotateCcw className="size-4" /></button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FiltersPanel({ floor, setFloor, onlyFree, setOnlyFree }: { floor: number; setFloor: (floor: number) => void; onlyFree: boolean; setOnlyFree: (value: boolean) => void }) {
-  return (
-    <aside className="rounded-[18px] border border-[#E1E5EA] bg-white p-4 xl:rounded-none xl:border-y-0 xl:border-l-0 xl:border-r">
-      <h2 className="text-sm font-bold text-ink">Этажи</h2>
-      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-1">
-        {floors.map((item) => (
-          <button className={cn("flex h-11 items-center rounded-[10px] px-3 text-left text-xs font-semibold", floor === item.floor ? "bg-brand text-white" : "text-[#475467] hover:bg-[#F5F6FF]")} key={item.floor} onClick={() => setFloor(item.floor)} type="button">
-            <span className="flex size-6 items-center justify-center rounded-md bg-white/15">{item.floor}</span>
-            <span className="ml-3">{item.floor} этаж</span>
-            <span className={cn("ml-auto text-[9px]", floor === item.floor ? "text-white/75" : "text-[#98A2B3]")}>{item.free} свободно</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="my-5 h-px bg-[#E7E9EE]" />
-      <div className="flex items-center justify-between"><h2 className="text-sm font-bold text-ink">Фильтры</h2><button className="text-[10px] font-semibold text-brand" onClick={() => setOnlyFree(false)} type="button">Сбросить</button></div>
-      <FilterSelect label="Тип пространства" value="Все типы" />
-      <FilterSelect label="Вместимость" value="Любая" />
-      <FilterSelect label="Оснащение" value="Любое" />
-      <label className="mt-5 flex cursor-pointer items-center gap-2.5 text-xs font-medium text-[#475467]">
-        <input checked={onlyFree} className="peer sr-only" onChange={(event) => setOnlyFree(event.target.checked)} type="checkbox" />
-        <span className="flex size-[18px] items-center justify-center rounded border border-[#C9CFD8] bg-white peer-checked:border-brand peer-checked:bg-brand"><Check className="size-3 text-white" /></span>
-        Только свободные
-      </label>
-    </aside>
-  );
-}
-
-function FilterSelect({ label, value }: { label: string; value: string }) {
-  return (
-    <label className="mt-4 block">
-      <span className="mb-1.5 block text-[10px] font-semibold text-[#667085]">{label}</span>
-      <span className="flex h-10 items-center rounded-[9px] border border-[#DFE3E9] px-3 text-[11px] font-medium text-[#475467]">{value}<ChevronDown className="ml-auto size-3.5 text-[#98A2B3]" /></span>
+    <label className="min-w-[150px] flex-1 xl:max-w-[200px]">
+      <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">{label}</span>
+      <span className="relative flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3 text-xs font-semibold text-ink"><Icon className="size-4 text-[#667085]" /><select className="min-w-0 flex-1 appearance-none bg-transparent pr-5 outline-none" onChange={(event) => onChange(event.target.value)} value={value}><option value="">{placeholder}</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 size-3.5 text-[#98A2B3]" /></span>
     </label>
   );
 }
 
-function FloorPlan({ floor, selectedRoom, selectedPc, onSelect, setSelectedPc, zoom, setZoom }: { floor: number; selectedRoom: string; selectedPc: string; onSelect: (id: string) => void; setSelectedPc: (pc: string) => void; zoom: number; setZoom: (zoom: number) => void }) {
+type FloorMapStatus = "free" | "partial" | "busy" | "request";
+
+const floorMapStatusAsset: Record<FloorMapStatus, string> = {
+  free: "/figma/floor-map/status-free.svg",
+  partial: "/figma/floor-map/status-busy.svg",
+  busy: "/figma/floor-map/status-partial.svg",
+  request: "/figma/floor-map/seat-busy-a.svg",
+};
+
+function getFloorMapStatus(space: Space): FloorMapStatus {
+  if (space.requires_approval) return "request";
+  if (space.workplaces.some((item) => item.is_available) && space.workplaces.some((item) => !item.is_available)) return "partial";
+  return space.is_available ? "free" : "busy";
+}
+
+function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWorkplace }: { spaces: Space[]; selectedId: string; selectedWorkplaceId: string; onSelect: (space: Space) => void; onWorkplace: (space: Space, id: string) => void }) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(766);
+  useEffect(() => {
+    if (!viewport.current) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(viewport.current);
+    return () => observer.disconnect();
+  }, []);
+  const scale = width / 766;
+  const panX = Math.max(-width * Math.max(0, zoom - 1), Math.min(0, pan.x));
+  const panY = Math.max(-650 * scale * Math.max(0, zoom - 1), Math.min(0, pan.y));
+  const first = spaces[0];
+  const floorSpaces = spaces.filter(
+    (space) => space.building_code === first.building_code && space.floor_number === first.floor_number,
+  );
+  const byCode = (code: string) => floorSpaces.find((space) => space.code === code);
+  const a201 = byCode("А-201");
+  const a202 = byCode("А-202");
+  const lab = byCode("Л-203");
+  const coworking = byCode("К-214");
+  const a208 = byCode("А-208");
+  const meeting = byCode("П-2");
+  const availableSeats = floorSpaces.reduce((total, space) => {
+    if (space.workplaces.length > 0) return total + space.workplaces.filter((workplace) => workplace.is_available).length;
+    return total + (space.is_available ? space.capacity : 0);
+  }, 0);
+
   return (
-    <div className="relative overflow-auto bg-[#F3F5F7] p-5">
-      <div className="mx-auto min-w-[700px] origin-top transition-transform" style={{ transform: `scale(${zoom / 100})`, width: `${10000 / zoom}%` }}>
-        <div className="grid grid-cols-[1.2fr_1fr_1.25fr_.7fr] gap-2">
-          <RoomBlock room={rooms[0]} selected={selectedRoom === "A-201"} onSelect={onSelect}><ClassroomLayout mode="free" /></RoomBlock>
-          <RoomBlock room={rooms[1]} selected={selectedRoom === "A-202"} onSelect={onSelect}><ClassroomLayout mode="busy" /></RoomBlock>
-          <RoomBlock room={rooms[2]} selected={selectedRoom === "Л-203"} onSelect={onSelect}><LaboratoryLayout /></RoomBlock>
-          <div className="flex min-h-[232px] flex-col items-center justify-center rounded-lg border-2 border-[#CCD2DA] bg-white text-center text-[#667085]"><span className="text-xl">↕</span><span className="mt-2 text-[11px] font-semibold">Лестница</span></div>
-        </div>
-
-        <div className="my-3 flex h-[66px] items-center justify-center rounded-lg border-2 border-dashed border-[#D7DCE3] bg-[#E9EDF1] text-[10px] font-semibold uppercase tracking-[0.18em] text-[#98A2B3]">Коридор · {floor} этаж</div>
-
-        <div className="grid grid-cols-[1.5fr_1fr_.82fr] gap-2">
-          <RoomBlock room={rooms[3]} selected={selectedRoom === "К-214"} onSelect={onSelect}>
-            <WorkstationMap onRoomSelect={() => onSelect("К-214")} onSelect={setSelectedPc} selectedPc={selectedPc} />
-          </RoomBlock>
-          <RoomBlock room={rooms[4]} selected={selectedRoom === "А-208"} onSelect={onSelect}>
-            <RoundTableLayout />
-          </RoomBlock>
-          <div className="grid gap-2">
-            <div className="flex min-h-[72px] items-center justify-center rounded-lg border-2 border-[#CCD2DA] bg-white text-xs font-bold text-[#667085]">WC</div>
-            <RoomBlock compact room={rooms[5]} selected={selectedRoom === "П-2"} onSelect={onSelect}>
-              <MeetingRoomLayout />
-            </RoomBlock>
+    <div className="min-w-0 px-3 pb-[18px] pt-[21px] sm:px-[19px]">
+      <div className="min-w-0">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3 px-1">
+          <div>
+            <h2 className="text-[18px] font-bold leading-normal text-[#1C2434]">План {first.floor_number} этажа</h2>
+            <p className="mt-1 text-[11px] font-medium text-[#22B8A7]">Корпус {first.building_code} · {availableSeats} свободных мест</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 pt-[6px]">
+            <FigmaMapLegend asset={floorMapStatusAsset.free} label="Свободно" />
+            <FigmaMapLegend asset={floorMapStatusAsset.partial} label="Частично" />
+            <FigmaMapLegend asset={floorMapStatusAsset.busy} label="Занято" />
+            <FigmaMapLegend asset={floorMapStatusAsset.request} label="По заявке" />
           </div>
         </div>
-      </div>
 
-      <div className="sticky bottom-0 ml-auto mt-3 flex w-fit overflow-hidden rounded-[10px] border border-[#DDE1E7] bg-white shadow-sm">
-        <button aria-label="Уменьшить масштаб" className="flex size-10 items-center justify-center text-[#667085] hover:text-brand" onClick={() => setZoom(Math.max(80, zoom - 10))} type="button"><Minus className="size-4" /></button>
-        <span className="flex w-12 items-center justify-center border-x border-[#E7E9EE] text-[10px] font-semibold text-[#667085]">{zoom}%</span>
-        <button aria-label="Увеличить масштаб" className="flex size-10 items-center justify-center text-[#667085] hover:text-brand" onClick={() => setZoom(Math.min(120, zoom + 10))} type="button"><Plus className="size-4" /></button>
-      </div>
-    </div>
-  );
-}
+        <div
+          ref={viewport}
+          className="w-full overflow-hidden rounded-[16px] bg-[#F7F8FA]"
+          style={{ height: 650 * scale, touchAction: zoom > 1 ? "none" : "pan-y" }}
+          onPointerDown={(event) => {
+            if (zoom <= 1 || event.button !== 0) return;
+            drag.current = { x: event.clientX, y: event.clientY, panX, panY, moved: false };
+          }}
+          onPointerMove={(event) => {
+            const start = drag.current;
+            if (!start || event.buttons === 0) return;
+            const dx = event.clientX - start.x;
+            const dy = event.clientY - start.y;
+            if (Math.abs(dx) + Math.abs(dy) > 5) {
+              start.moved = true;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setPan({ x: start.panX + dx, y: start.panY + dy });
+            }
+          }}
+          onPointerCancel={() => { drag.current = null; }}
+          onClickCapture={(event) => {
+            if (drag.current?.moved) { event.preventDefault(); event.stopPropagation(); }
+            drag.current = null;
+          }}
+        >
+          <div
+            className="relative h-[650px] w-[766px]"
+            onWheel={(event) => {
+              if (!event.ctrlKey) return;
+              event.preventDefault();
+              setZoom((current) => Math.min(1.25, Math.max(0.85, current + (event.deltaY < 0 ? 0.05 : -0.05))));
+            }}
+            style={{ transform: `translate(${panX}px, ${panY}px) scale(${scale * zoom})`, transformOrigin: "top left" }}
+          >
+            <div className="absolute left-[42px] top-[270px] flex h-[84px] w-[682px] items-center justify-center rounded-[12px] border border-[#E4E7EC] bg-white text-[10px] font-bold text-[#667085]">КОРИДОР</div>
 
-function RoomBlock({ room, selected, onSelect, children, compact = false }: { room: Room; selected: boolean; onSelect: (id: string) => void; children: React.ReactNode; compact?: boolean }) {
-  return (
-    <div className={cn("relative min-h-[232px] overflow-hidden rounded-lg border-2 p-3 text-left transition-shadow hover:shadow-md", compact && "min-h-[150px]", statusStyles[room.status], selected && "ring-2 ring-brand ring-offset-2")} onClick={() => room.status !== "busy" && onSelect(room.id)}>
-      <div className="flex items-start justify-between gap-2">
-        <div><p className="text-xs font-bold text-ink">{room.title}</p><p className="mt-0.5 text-[9px] text-[#667085]">{room.kind}</p></div>
-        <span className="flex shrink-0 items-center gap-1 text-[9px] font-semibold text-[#667085]"><Image alt="" height={8} src={statusDots[room.status]} width={8} />{room.statusLabel}</span>
-      </div>
-      {children}
-      <p className="absolute bottom-2.5 left-3 text-[9px] font-medium text-[#667085]">{room.meta}</p>
-    </div>
-  );
-}
+            {a201 && (
+              <FigmaRoom className="left-[42px] top-[40px] h-[213px] w-[172px]" onSelect={onSelect} selected={selectedId === a201.id} space={a201}>
+                <p className="absolute left-[13px] top-[37px] text-[10px] font-medium text-[#667085]">{a201.capacity} мест · проектор</p>
+                <ClassroomFurniture available={a201.is_available} teacherDesk />
+              </FigmaRoom>
+            )}
+            {a202 && (
+              <FigmaRoom className="left-[228px] top-[40px] h-[213px] w-[156px]" onSelect={onSelect} selected={selectedId === a202.id} space={a202}>
+                <p className="absolute left-[13px] top-[37px] text-[10px] font-medium text-[#667085]">{a202.is_available ? "Свободно сейчас" : "Занято"}</p>
+                <ClassroomFurniture available={a202.is_available} />
+              </FigmaRoom>
+            )}
+            {lab && (
+              <FigmaRoom className="left-[398px] top-[40px] h-[213px] w-[190px]" onSelect={onSelect} selected={selectedId === lab.id} space={lab}>
+                <p className="absolute left-[13px] top-[37px] text-[10px] font-medium text-[#667085]">Лаборатория · заявка</p>
+                <LabFurniture available={lab.is_available} />
+              </FigmaRoom>
+            )}
 
-function ClassroomLayout({ mode }: { mode: "free" | "busy" }) {
-  return (
-    <div className="mx-auto mt-2 w-full max-w-[196px]">
-      <div className="mx-auto h-2 w-[80%] rounded-md border border-[#D5DBE3] bg-white" />
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 px-1">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index}>
-            <div className="h-[22px] rounded-md border border-[#D5DBE3] bg-white" />
-            <div className="mt-0.5 flex justify-center gap-2.5">
-              <span
-                className={cn(
-                  "size-3 rounded-full",
-                  mode === "busy" && index !== 1 ? "bg-[#D5DAE1]" : "bg-[#22B8A7]",
-                )}
-              />
-              <span
-                className={cn(
-                  "size-3 rounded-full",
-                  mode === "busy" && index !== 0 ? "bg-[#D5DAE1]" : "bg-[#22B8A7]",
-                )}
-              />
+            <div className="absolute left-[602px] top-[40px] flex h-[213px] w-[122px] flex-col items-center rounded-[10px] border border-[#E4E7EC] bg-white text-[#667085]">
+              <span className="mt-[18px] text-[22px] font-bold">≋</span>
+              <span className="mt-2 text-[11px] font-medium">Лестница</span>
             </div>
+
+            {coworking && (
+              <FigmaRoom className="left-[42px] top-[386px] h-[206px] w-[330px]" onSelect={onSelect} selected={selectedId === coworking.id} space={coworking} title={`${coworking.code} · Коворкинг`}>
+                <p className="absolute left-[11px] top-[35px] text-[10px] font-medium text-[#667085]">{coworking.workplaces.length} столов · {coworking.workplaces.filter((item) => item.has_computer).length} ПК</p>
+                <div className="absolute inset-x-[11px] top-[63px]">
+                  <WorkplacePlan space={coworking} selectedId={selectedWorkplaceId} onSelect={(id) => onWorkplace(coworking, id)} />
+                </div>
+              </FigmaRoom>
+            )}
+
+            {a208 && (
+              <FigmaRoom className="left-[388px] top-[386px] h-[96px] w-[200px]" onSelect={onSelect} selected={selectedId === a208.id} space={a208}>
+                <p className="absolute left-[13px] top-[37px] text-[10px] font-medium text-[#667085]">{a208.is_available ? "Свободно сейчас" : "Занято"}</p>
+                <RoundTableFurniture available={a208.is_available} />
+              </FigmaRoom>
+            )}
+
+            <div className="absolute left-[602px] top-[386px] flex h-[96px] w-[122px] flex-col items-center rounded-[10px] border border-[#E4E7EC] bg-white text-[#667085]">
+              <span className="mt-[23px] text-[14px] font-bold">WC</span>
+              <span className="mt-[12px] text-[10px] font-medium">Санузел</span>
+            </div>
+
+            {meeting && (
+              <FigmaRoom className="left-[388px] top-[496px] h-[96px] w-[336px]" onSelect={onSelect} selected={selectedId === meeting.id} space={meeting} title="Переговорная П-2">
+                <p className="absolute left-[13px] top-[37px] text-[10px] font-medium text-[#667085]">{meeting.capacity} мест · доска</p>
+                <MeetingFurniture available={meeting.is_available} />
+              </FigmaRoom>
+            )}
           </div>
-        ))}
+        </div>
+
+        <div className="flex h-[61px] items-end justify-between px-1">
+          <p className="pb-[2px] text-[10px] font-medium text-[#667085]">Ctrl + колёсико — масштаб · Перетаскивание — перемещение</p>
+          <div className="flex h-[44px] w-[94px] shrink-0 overflow-hidden rounded-[12px] border border-[#E4E7EC] bg-white">
+            <button aria-label="Уменьшить масштаб" className="flex flex-1 items-center justify-center text-[18px] font-bold text-[#667085]" onClick={() => setZoom((current) => Math.max(0.85, current - 0.1))} type="button">−</button>
+            <span className="my-[7px] w-px bg-[#E4E7EC]" />
+            <button aria-label="Увеличить масштаб" className="flex flex-1 items-center justify-center text-[18px] font-bold text-[#3346C8]" onClick={() => setZoom((current) => Math.min(1.25, current + 0.1))} type="button">+</button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function LaboratoryLayout() {
-  const table1Left = [true, false, false, true, true];
-  const table1Right = [true, false, true, false, true];
-  const table2Left = [true, false, true, false, true];
-  const table2Right = [true, false, true, false, true];
+function FigmaMapLegend({ asset, label }: { asset: string; label: string }) {
+  return <span className="inline-flex items-center gap-[6px] whitespace-nowrap text-[9px] font-medium text-[#667085]"><img alt="" height="8" src={asset} width="8" />{label}</span>;
+}
 
+function FigmaRoom({ space, selected, onSelect, className, title, children }: { space: Space; selected: boolean; onSelect: (space: Space) => void; className: string; title?: string; children: React.ReactNode }) {
+  const status = getFloorMapStatus(space);
   return (
-    <div className="mx-auto mt-3 w-full max-w-[210px]">
-      <div className="mx-auto h-2 w-[80%] rounded-md border border-[#D5DBE3] bg-white" />
-      <div className="mt-2.5 flex items-center justify-center gap-3.5">
-        <TableGroup leftSeats={table1Left} rightSeats={table1Right} />
-        <TableGroup leftSeats={table2Left} rightSeats={table2Right} />
-      </div>
+    <div
+      className={cn(
+        "absolute overflow-hidden rounded-[10px] border text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
+        status === "free" && "border-[#E4E7EC] bg-[#E8F8F5]",
+        status === "busy" && "border-[#E4E7EC] bg-[#E9EDF2]",
+        status === "partial" && "border-[#E4E7EC] bg-[#FEF3D8]",
+        status === "request" && "border-[#E4E7EC] bg-[#EEF0FF]",
+        selected && "border-[3px] border-[#3346C8]",
+        className,
+      )}
+
+    >
+      <button aria-label={space.name} aria-pressed={selected} className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand" onClick={() => onSelect(space)} type="button" />
+      <strong className={cn("pointer-events-none absolute top-[13px] text-[13px] font-bold leading-normal text-[#1C2434]", selected ? "left-[11px]" : "left-[13px]")}>{title ?? space.code}</strong>
+      <img alt="" className="pointer-events-none absolute right-[13px] top-[13px]" height="8" src={floorMapStatusAsset[status]} width="8" />
+      <div className="pointer-events-none">{children}</div>
     </div>
   );
 }
 
-function TableGroup({
-  leftSeats,
-  rightSeats,
-}: {
-  leftSeats: boolean[];
-  rightSeats: boolean[];
-}) {
+function WorkplacePlan({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
+  const workplaces = [...space.workplaces].sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex h-[108px] flex-col justify-between">
-        {leftSeats.map((isFree, idx) => (
-          <span
-            className={cn(
-              "size-3 shrink-0 rounded-full",
-              isFree ? "bg-[#22B8A7]" : "bg-[#D5DAE1]",
-            )}
-            key={`l-${idx}`}
-          />
-        ))}
-      </div>
-
-      <div className="h-[118px] w-[52px] rounded-2xl border border-[#C9D0F3] bg-[#DDE2FF]" />
-
-      <div className="flex h-[108px] flex-col justify-between">
-        {rightSeats.map((isFree, idx) => (
-          <span
-            className={cn(
-              "size-3 shrink-0 rounded-full",
-              isFree ? "bg-[#22B8A7]" : "bg-[#D5DAE1]",
-            )}
-            key={`r-${idx}`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RoundTableLayout() {
-  return (
-    <div className="relative mx-auto mt-4 h-[120px] w-[130px]">
-      <Image alt="Круглый стол" className="absolute left-[35px] top-[25px]" height={70} src="/icons/map/round-table.svg" width={60} />
-      <MapSeat className="left-0 top-[49px]" src="/icons/map/seat-free.svg" />
-      <MapSeat className="right-0 top-[49px]" src="/icons/map/seat-busy-round.svg" />
-      <MapSeat className="left-[54px] top-0" src="/icons/map/seat-free-alt.svg" />
-      <MapSeat className="bottom-0 left-[54px]" src="/icons/map/seat-busy-alt.svg" />
-    </div>
-  );
-}
-
-function MeetingRoomLayout() {
-  return (
-    <div className="mx-auto mt-3 flex h-16 w-28 items-center justify-center rounded-[14px] border-2 border-[#CCD2DA] bg-white">
-      <div className="h-11 w-16 rounded-lg bg-[#E4E8ED]" />
-    </div>
-  );
-}
-
-const workstationSeats = [
-  { id: "ПК-1", group: 0, x: 12, y: 16, busy: true }, { id: "ПК-2", group: 0, x: 104, y: 16, busy: false },
-  { id: "ПК-3", group: 0, x: 12, y: 48, busy: false }, { id: "ПК-4", group: 0, x: 104, y: 48, busy: false },
-  { id: "ПК-5", group: 0, x: 12, y: 80, busy: false }, { id: "ПК-6", group: 0, x: 104, y: 80, busy: false },
-  { id: "ПК-7", group: 1, x: 12, y: 16, busy: true }, { id: "ПК-8", group: 1, x: 104, y: 16, busy: false },
-  { id: "ПК-9", group: 1, x: 12, y: 48, busy: false }, { id: "ПК-10", group: 1, x: 104, y: 48, busy: false },
-  { id: "ПК-11", group: 1, x: 12, y: 80, busy: false }, { id: "ПК-12", group: 1, x: 104, y: 80, busy: false },
-];
-
-function WorkstationMap({ selectedPc, onSelect, onRoomSelect }: { selectedPc: string; onSelect: (pc: string) => void; onRoomSelect: () => void }) {
-  return (
-    <div className="mt-3 flex items-center justify-center gap-2 overflow-hidden" onClick={(event) => event.stopPropagation()}>
-      {[0, 1].map((group) => (
-        <div className="relative h-[124px] w-[140px] shrink-0" key={group}>
-          <Image alt={`Группа рабочих мест ${group + 1}`} className="absolute inset-0" height={124} src={group === 0 ? "/icons/map/desk-group-left.svg" : "/icons/map/desk-group-right.svg"} width={140} />
-          {workstationSeats.filter((seat) => seat.group === group).map((seat) => (
+    <div className="grid grid-cols-2 gap-4">
+      {Array.from({ length: Math.ceil(workplaces.length / 6) }, (_, group) => (
+        <div className="relative grid grid-cols-2 gap-x-14 gap-y-2 rounded-xl border border-dashed border-[#D8DEE8] bg-white/60 p-2.5" key={group}>
+          <div className="absolute inset-y-2.5 left-1/2 w-7 -translate-x-1/2 rounded-xl border border-[#D8DEE8] bg-white" />
+          {workplaces.slice(group * 6, group * 6 + 6).map((workplace) => (
             <button
-              aria-label={`${seat.id}${seat.busy ? ", занято" : selectedPc === seat.id ? ", выбрано" : ", свободно"}`}
-              aria-pressed={selectedPc === seat.id}
-              className={cn(
-                "absolute flex h-6 w-7 items-center justify-center rounded-md border transition",
-                seat.busy && "cursor-not-allowed border-[#D8DEE8] bg-white",
-                !seat.busy && selectedPc !== seat.id && "border-[#D8DEE8] bg-white hover:border-brand hover:ring-2 hover:ring-brand/20",
-                selectedPc === seat.id && "border-brand bg-brand",
-              )}
-              disabled={seat.busy}
-              key={seat.id}
-              onClick={() => { onSelect(seat.id); onRoomSelect(); }}
-              style={{ left: seat.x, top: seat.y }}
-              title={seat.busy ? `${seat.id} занято` : `Выбрать ${seat.id}`}
+              aria-label={`${workplace.code}: ${workplace.is_available ? "свободно" : "занято"}`}
+              aria-pressed={selectedId === workplace.id}
+              className={cn("pointer-events-auto relative flex h-7 min-w-0 items-center justify-center rounded-md border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2", selectedId === workplace.id ? "border-brand bg-brand text-white" : workplace.is_available ? "border-[#D8DEE8] bg-white text-[#22B8A7] hover:border-brand" : "cursor-not-allowed border-[#D8DEE8] bg-[#F2F4F7] text-[#98A2B3]")}
+              disabled={!workplace.is_available}
+              key={workplace.id}
+              onClick={() => onSelect(workplace.id)}
+              title={workplace.code}
               type="button"
-            >
-              <span className={cn("size-2.5 rounded-full", seat.busy ? "bg-[#D5DAE1]" : selectedPc === seat.id ? "bg-white" : "bg-[#22B8A7]")} />
-            </button>
+            ><Monitor className="size-4 shrink-0" /></button>
           ))}
         </div>
       ))}
@@ -515,118 +491,195 @@ function WorkstationMap({ selectedPc, onSelect, onRoomSelect }: { selectedPc: st
   );
 }
 
-function MapSeat({ className, src }: { className: string; src: string }) {
-  return <Image alt="" className={cn("absolute", className)} height={22} src={src} width={22} />;
-}
-
-function RoomList({ rooms: list, selectedRoom, onSelect }: { rooms: Room[]; selectedRoom: string; onSelect: (id: string) => void }) {
+function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  if (space.image_url && !imageFailed) return <img alt={`Превью: ${space.name}`} className="h-48 w-full object-cover" onError={() => setImageFailed(true)} src={space.image_url} />;
   return (
-    <div className="grid gap-3 p-5 sm:grid-cols-2">
-      {list.map((room) => (
-        <button className={cn("rounded-xl border bg-white p-4 text-left hover:border-brand", selectedRoom === room.id ? "border-brand ring-1 ring-brand" : "border-[#E1E5EA]")} key={room.id} onClick={() => onSelect(room.id)} type="button">
-          <div className="flex justify-between gap-3"><h3 className="text-sm font-bold text-ink">{room.title}</h3><span className="flex items-center gap-1 text-[10px] text-[#667085]"><Image alt="" height={8} src={statusDots[room.status]} width={8} />{room.statusLabel}</span></div>
-          <p className="mt-2 text-xs text-[#667085]">{room.kind} · {room.meta}</p>
-        </button>
-      ))}
+    <div className="bg-[#F5F6FF] p-4">
+      <p className="mb-3 text-[10px] font-semibold text-[#667085]">Схема помещения · {space.code}</p>
+      {space.workplaces.length > 0 ? <WorkplacePlan space={space} selectedId={selectedId} onSelect={onSelect} /> : (
+        <div aria-label={`Схема: ${space.name}`} className="relative mx-auto h-[213px] w-[190px] rounded-xl border border-[#D8DEE8] bg-[#E8F8F5]">
+          {space.space_type === "laboratory" ? <LabFurniture available={space.is_available} /> : space.space_type === "meeting_room" || space.capacity <= 6 ? <div className="absolute -left-12 top-12"><RoundTableFurniture available={space.is_available} /></div> : <ClassroomFurniture available={space.is_available} teacherDesk />}
+        </div>
+      )}
     </div>
   );
 }
 
-function RoomPreview({
-  room,
-  selectedPc,
-  onPcSelect,
-}: {
-  room: Room;
-  selectedPc: string;
-  onPcSelect: (pc: string) => void;
-}) {
-  switch (room.id) {
-    case "К-214":
-      return (
-        <div className="origin-center scale-[0.80]">
-          <WorkstationMap onRoomSelect={() => undefined} onSelect={onPcSelect} selectedPc={selectedPc} />
-        </div>
-      );
-    case "Л-203":
-      return (
-        <div className="-mt-1 origin-center scale-[0.76]">
-          <LaboratoryLayout />
-        </div>
-      );
-    case "A-201":
-      return (
-        <div className="origin-center scale-[0.82]">
-          <ClassroomLayout mode="free" />
-        </div>
-      );
-    case "A-202":
-      return (
-        <div className="origin-center scale-[0.82]">
-          <ClassroomLayout mode="busy" />
-        </div>
-      );
-    case "А-208":
-      return (
-        <div className="origin-center scale-[0.88]">
-          <RoundTableLayout />
-        </div>
-      );
-    case "П-2":
-      return (
-        <div className="origin-center scale-95">
-          <MeetingRoomLayout />
-        </div>
-      );
-    default:
-      return null;
-  }
+function ClassroomFurniture({ available, teacherDesk = false }: { available: boolean; teacherDesk?: boolean }) {
+  return (
+    <span className="absolute inset-x-0 top-[67px] block h-[136px]">
+      {teacherDesk ? <span className="absolute left-[17px] top-0 h-[22px] w-[calc(100%-34px)] rounded-[5px] border border-[#D8DEE8] bg-[#EEF0FF]" /> : <span className="absolute left-[23px] top-[2px] h-[10px] w-[calc(100%-46px)] rounded-[3px] border border-[#D8DEE8] bg-white" />}
+      {[0, 1, 2].map((row) => [0, 1].map((column) => (
+        <span className="absolute h-[20px] w-[44px] rounded-[5px] border border-[#D8DEE8] bg-white" key={`${row}-${column}`} style={{ left: column === 0 ? 19 : "calc(100% - 63px)", top: (teacherDesk ? 36 : 34) + row * 34 }}>
+          <img alt="" className="absolute left-[7px] top-[22px]" height="10" src={available ? "/figma/floor-map/seat-busy-b.svg" : "/figma/floor-map/seat-free-b.svg"} width="10" />
+          <img alt="" className="absolute left-[25px] top-[22px]" height="10" src={available ? "/figma/floor-map/seat-busy-b.svg" : "/figma/floor-map/seat-free-b.svg"} width="10" />
+        </span>
+      )))}
+    </span>
+  );
 }
 
-function RoomDetails({ room, selectedPc, onPcSelect, selectedSlot, setSelectedSlot, favorite, setFavorite, booked, onBook }: { room: Room; selectedPc: string; onPcSelect: (pc: string) => void; selectedSlot: string; setSelectedSlot: (slot: string) => void; favorite: boolean; setFavorite: (value: boolean) => void; booked: boolean; onBook: () => void }) {
-  const slots = ["14:00", "14:30", "15:00", "15:30", "16:00", "16:30"];
+function LabFurniture({ available }: { available: boolean }) {
   return (
-    <aside className="self-start overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white xl:sticky xl:top-4">
-      <div className="relative flex h-[168px] flex-col overflow-hidden bg-[linear-gradient(135deg,#E9ECF1,#F8F9FA)] p-3.5">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[9px] font-semibold text-accent shadow-sm">
-            <Image alt="" height={8} src={statusDots[room.status]} width={8} />
-            {room.statusLabel}
-          </span>
-          <span className="text-[10px] font-medium text-[#667085]">План помещения</span>
+    <span className="absolute left-[13px] top-[67px] block h-[126px] w-[162px] rounded-[10px] bg-white/55">
+      <span className="absolute left-[18px] top-[14px] h-[96px] w-[45px] rounded-[8px] border border-[#D8DEE8] bg-[#DDE2FF]" />
+      <span className="absolute right-[16px] top-[14px] h-[96px] w-[45px] rounded-[8px] border border-[#D8DEE8] bg-[#DDE2FF]" />
+      {[10, 44, 78].map((top) => [6, 65, 89, 148].map((left) => <img alt="" className="absolute" height="10" key={`${top}-${left}`} src={available ? "/figma/floor-map/seat-busy-b.svg" : "/figma/floor-map/seat-free-b.svg"} style={{ left, top }} width="10" />))}
+      <span className="absolute bottom-[-2px] left-[46px] h-[12px] w-[72px] rounded-[3px] border border-[#D8DEE8] bg-white" />
+    </span>
+  );
+}
+
+function RoundTableFurniture({ available }: { available: boolean }) {
+  const seat = available ? "/figma/floor-map/seat-busy-c.svg" : "/figma/floor-map/seat-busy-d.svg";
+  return (
+    <span className="absolute left-[105px] top-[17px] block h-[72px] w-[72px]">
+      <img alt="Круглый стол" className="absolute left-[15px] top-[15px]" height="42" src="/figma/floor-map/seat-free-a.svg" width="42" />
+      <img alt="" className="absolute left-0 top-[31px]" height="12" src={seat} width="12" />
+      <img alt="" className="absolute right-0 top-[31px]" height="12" src={seat} width="12" />
+      <img alt="" className="absolute left-[30px] top-0" height="12" src={seat} width="12" />
+      <img alt="" className="absolute bottom-0 left-[30px]" height="12" src={seat} width="12" />
+    </span>
+  );
+}
+
+function MeetingFurniture({ available }: { available: boolean }) {
+  const seat = available ? "/figma/floor-map/seat-busy-c.svg" : "/figma/floor-map/seat-busy-d.svg";
+  return (
+    <span className="absolute left-[145px] top-[9px] block h-[72px] w-[174px] rounded-[10px] border border-dashed border-[#D8DEE8] bg-white/55">
+      <span className="absolute left-[52px] top-[16px] h-[36px] w-[66px] rounded-[12px] border border-[#D8DEE8] bg-white" />
+      {[[38, 21], [38, 35], [120, 21], [120, 35], [71, 2], [89, 2], [71, 54], [89, 54]].map(([left, top]) => <img alt="" className="absolute" height="12" key={`${left}-${top}`} src={seat} style={{ left, top }} width="12" />)}
+    </span>
+  );
+}
+
+function FloorMap({ spaces, selectedId, onSelect }: { spaces: Space[]; selectedId: string; onSelect: (space: Space) => void }) {
+  const first = spaces[0];
+  const floorSpaces = spaces.filter(
+    (space) => space.building_code === first.building_code && space.floor_number === first.floor_number,
+  );
+  const fallbackPositions = [
+    { x: 12, y: 18 },
+    { x: 36, y: 18 },
+    { x: 62, y: 18 },
+    { x: 12, y: 55 },
+    { x: 38, y: 55 },
+    { x: 64, y: 55 },
+  ];
+
+  return (
+    <div className="p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-ink">Корпус {first.building_code} · {first.floor_number} этаж</p>
+          <p className="mt-1 text-[10px] text-[#667085]">Нажмите на помещение, чтобы посмотреть детали</p>
         </div>
-        <div className="flex flex-1 items-center justify-center overflow-hidden">
-          <RoomPreview onPcSelect={onPcSelect} room={room} selectedPc={selectedPc} />
+        <div className="flex flex-wrap items-center gap-4 text-[9px] font-medium text-[#667085]">
+          <MapLegend color="bg-[#20B8A6]" label="Свободно" />
+          <MapLegend color="bg-[#98A2B3]" label="Занято" />
+          <MapLegend color="bg-[#F0A13A]" label="По заявке" />
         </div>
       </div>
+
+      <div className="relative min-h-[520px] overflow-hidden rounded-2xl border border-[#DDE2E8] bg-[#F4F6F8] shadow-inner">
+        <div className="absolute inset-4 rounded-xl border-2 border-[#CAD1DA] bg-[#E9EDF1]" />
+        <div className="absolute left-[7%] top-[44%] h-[11%] w-[86%] border-y border-[#D5DAE1] bg-white">
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#B0B7C2]">Коридор</span>
+        </div>
+        <div className="absolute bottom-[45%] left-[4%] h-[11%] w-[3%] border-y border-[#D5DAE1] bg-white" />
+        <div className="absolute bottom-[45%] right-[4%] h-[11%] w-[3%] border-y border-[#D5DAE1] bg-white" />
+
+        {floorSpaces.map((space, index) => {
+          const fallback = fallbackPositions[index % fallbackPositions.length];
+          const x = space.map_x ?? fallback.x;
+          const y = space.map_y ?? fallback.y;
+          const approval = space.requires_approval;
+          const selected = selectedId === space.id;
+          return (
+            <button
+              aria-pressed={selected}
+              className={cn(
+                "group absolute flex h-[25%] w-[22%] min-w-[112px] flex-col overflow-hidden rounded-xl border-2 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:p-3",
+                approval
+                  ? "border-[#F2C47E] bg-[#FFF8E9]"
+                  : space.is_available
+                    ? "border-[#67D0C4] bg-[#ECFAF7]"
+                    : "border-[#CDD3DB] bg-[#EEF1F4]",
+                selected && "border-brand bg-[#EEF0FF] ring-2 ring-brand ring-offset-2",
+              )}
+              key={space.id}
+              onClick={() => onSelect(space)}
+              style={{ left: `${x}%`, top: `${y}%` }}
+              type="button"
+            >
+              <span className="flex w-full items-start justify-between gap-1">
+                <strong className="truncate text-xs font-bold text-ink sm:text-sm">{space.code}</strong>
+                <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", approval ? "bg-[#F0A13A]" : space.is_available ? "bg-[#20B8A6]" : "bg-[#98A2B3]")} />
+              </span>
+              <span className="mt-0.5 truncate text-[8px] font-medium text-[#667085] sm:text-[9px]">{spaceTypeLabel(space.space_type)}</span>
+              {space.workplaces.length > 0 ? (
+                <span className="mt-auto grid grid-cols-4 gap-1" aria-label={`${space.workplaces.length} компьютерных мест`}>
+                  {space.workplaces.slice(0, 12).map((workplace) => (
+                    <span
+                      className={cn(
+                        "flex h-4 items-center justify-center rounded border bg-white sm:h-5",
+                        workplace.is_available ? "border-[#9EDFD7]" : "border-[#CDD3DB] bg-[#E2E6EB]",
+                      )}
+                      key={workplace.id}
+                      title={workplace.code}
+                    >
+                      <Monitor className={cn("size-2.5", workplace.is_available ? "text-[#169C8D]" : "text-[#98A2B3]")} />
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="mt-auto text-[8px] font-medium text-[#667085] sm:text-[9px]">{space.capacity} мест</span>
+              )}
+              <span className="absolute -bottom-1 left-1/2 h-2 w-7 -translate-x-1/2 rounded-t border-x border-t border-[#C8CED7] bg-white" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MapLegend({ color, label }: { color: string; label: string }) {
+  return <span className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", color)} />{label}</span>;
+}
+
+function SpaceItem({ space, selected, onSelect }: { space: Space; selected: boolean; onSelect: () => void }) {
+  return (
+    <button className={cn("flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left transition hover:border-brand/40", selected ? "border-brand ring-1 ring-brand/20" : "border-[#E1E5EA]")} onClick={onSelect} type="button">
+      <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold", space.is_available ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#F2F4F7] text-[#667085]")}>{initialsFromCode(space.code)}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start justify-between gap-3"><strong className="text-sm text-ink">{space.name}</strong><span className={cn("flex items-center gap-1 text-[9px] font-semibold", space.is_available ? "text-accent" : "text-[#98A2B3]")}><span className="size-1.5 rounded-full bg-current" />{space.is_available ? "Свободно" : "Занято"}</span></span>
+        <span className="mt-1 block text-[11px] text-[#667085]">{spaceTypeLabel(space.space_type)} · {space.capacity} мест</span>
+        <span className="mt-3 flex items-center gap-1 text-[10px] text-[#98A2B3]"><MapPin className="size-3" />Корпус {space.building_code} · {space.floor_number} этаж</span>
+      </span>
+    </button>
+  );
+}
+
+function SpaceDetails({ selected, selectedWorkplaceId, onWorkplace, selectedDate, selectedTime, favorite, onFavorite, onBook, bookingPending, bookingMessage }: { selected: Space | null; selectedWorkplaceId: string; onWorkplace: (id: string) => void; selectedDate: string; selectedTime: string; favorite: boolean; onFavorite: () => void; onBook: () => void; bookingPending: boolean; bookingMessage: string }) {
+  if (!selected) return <aside className="rounded-[18px] border border-[#E1E5EA] bg-white p-6 text-center text-sm text-[#667085]">Выберите пространство, чтобы посмотреть детали.</aside>;
+  const selectedWorkplace = selected.workplaces.find((item) => item.id === selectedWorkplaceId);
+  return (
+    <aside className="min-w-0 self-start overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white xl:sticky xl:top-4">
+      <SpacePreview key={selected.id} space={selected} selectedId={selectedWorkplaceId} onSelect={onWorkplace} />
       <div className="p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand">{room.kind}</p>
-        <h2 className="mt-1 text-xl font-bold text-ink">{room.title}</h2>
-        <p className="mt-1 text-[11px] text-[#667085]">Корпус А · 2 этаж</p>
-        <div className="mt-3 flex items-center gap-1.5 text-[11px]"><Star className="size-3.5 fill-[#F4B740] text-[#F4B740]" /><strong>4.8</strong><button className="text-brand" type="button">24 отзыва</button></div>
+        <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand">{spaceTypeLabel(selected.space_type)}</p><h2 className="mt-1 text-xl font-bold text-ink">{selected.name}</h2></div>{selected.rating_average !== null && <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF7E8] px-2.5 py-1 text-xs font-bold text-[#B57700]"><Star className="size-3 fill-current" />{selected.rating_average}</span>}</div>
+        <p className="mt-1 text-[11px] text-[#667085]">Корпус {selected.building_code} · {selected.floor_number} этаж</p>
+        {selected.description && <p className="mt-3 text-xs leading-5 text-[#667085]">{selected.description}</p>}
+        <div className="mt-4 flex flex-wrap gap-2"><Feature icon={Users} label={`${selected.capacity} мест`} />{selected.amenities.slice(0, 3).map((amenity) => <Feature icon={amenity.toLowerCase().includes("проектор") ? Projector : Monitor} key={amenity} label={amenity} />)}</div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {room.features.map((feat) => {
-            const Icon = feat.type === "users" ? Users : feat.type === "monitor" ? Monitor : Projector;
-            return <Feature icon={Icon} key={feat.label} label={feat.label} />;
-          })}
-        </div>
+        {selected.workplaces.length > 0 && <><div className="my-5 h-px bg-[#E7E9EE]" /><h3 className="text-xs font-bold text-ink">Выберите рабочее место</h3><div className="mt-3 grid grid-cols-3 gap-2">{selected.workplaces.map((workplace) => <button aria-pressed={selectedWorkplaceId === workplace.id} className={cn("h-9 rounded-lg border text-[10px] font-semibold", !workplace.is_available && "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]", workplace.is_available && selectedWorkplaceId !== workplace.id && "border-[#DFE3E9] text-[#475467] hover:border-brand", selectedWorkplaceId === workplace.id && "border-brand bg-brand text-white")} disabled={!workplace.is_available} key={workplace.id} onClick={() => onWorkplace(workplace.id)} type="button">{workplace.code}</button>)}</div></>}
 
-        <div className="my-5 h-px bg-[#E7E9EE]" />
-        <h3 className="text-xs font-bold text-ink">Доступное время</h3>
-        <p className="mt-1 text-[10px] text-[#667085]">Сегодня, 24 октября</p>
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {slots.map((slot) => <TimeSlot className="h-9 min-w-0 px-1 text-[10px]" key={slot} onClick={() => setSelectedSlot(slot)} state={selectedSlot === slot ? "selected" : "available"}>{slot}</TimeSlot>)}
-        </div>
-
-        <div className="mt-5 rounded-xl bg-[#F5F6FF] p-3">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Ваша бронь</p>
-          <p className="mt-1.5 text-xs font-bold text-ink">24 октября · {selectedSlot}–{endTime(selectedSlot)}</p>
-          <p className="mt-1 text-[10px] text-[#667085]">{room.id === "К-214" ? `${selectedPc} · Коворкинг ${room.title}` : `${room.kind} ${room.title}`} · 30 минут</p>
-        </div>
-
-        <Button className="mt-4 h-[42px] min-w-0" disabled={room.status === "busy"} fullWidth onClick={onBook}>{booked ? "Бронь подтверждена" : "Забронировать"}</Button>
-        <Button aria-pressed={favorite} className="mt-2 h-[42px] min-w-0 gap-2" fullWidth onClick={() => setFavorite(!favorite)} variant="secondary"><Heart className={cn("size-4", favorite && "fill-brand")} />{favorite ? "В избранном" : "Добавить в избранное"}</Button>
+        <div className="mt-5 rounded-xl bg-[#F5F6FF] p-3"><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Ваша бронь</p><p className="mt-1.5 text-xs font-bold text-ink">{selectedDate} · {selectedTime}</p><p className="mt-1 text-[10px] text-[#667085]">{selectedWorkplace ? `${selectedWorkplace.code} · ` : ""}{selected.name} · 30 минут</p></div>
+        {bookingMessage && <p className={cn("mt-3 rounded-xl px-3 py-2.5 text-xs font-medium", bookingMessage.includes("подтверждено") || bookingMessage.includes("отправлена") ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#FFF1F3] text-[#C83E52]")} role="status">{bookingMessage}</p>}
+        <Button className="mt-4 h-[42px] min-w-0" disabled={!selected.is_available || bookingPending || (selected.workplaces.length > 0 && !selectedWorkplace?.is_available)} fullWidth onClick={onBook}>{bookingPending ? "Проверяем доступ…" : selected.requires_approval ? "Отправить заявку" : "Забронировать"}</Button>
+        <Button aria-pressed={favorite} className="mt-2 h-[42px] min-w-0 gap-2" fullWidth onClick={onFavorite} variant="secondary"><Heart className={cn("size-4", favorite && "fill-brand")} />{favorite ? "В избранном" : "Добавить в избранное"}</Button>
       </div>
     </aside>
   );
@@ -636,8 +689,14 @@ function Feature({ icon: Icon, label }: { icon: typeof Users; label: string }) {
   return <span className="flex items-center gap-1.5 rounded-lg bg-[#F2F4F7] px-2.5 py-1.5 text-[9px] font-semibold text-[#475467]"><Icon className="size-3.5" />{label}</span>;
 }
 
-function endTime(slot: string) {
-  const [hours, minutes] = slot.split(":").map(Number);
-  const total = hours * 60 + minutes + 30;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+function LoadingState() {
+  return <div className="grid gap-3 p-5 sm:grid-cols-2">{Array.from({ length: 4 }).map((_, index) => <div className="h-36 animate-pulse rounded-2xl bg-[#F2F4F7]" key={index} />)}</div>;
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><p className="text-sm font-semibold text-ink">Не удалось загрузить пространства</p><p className="mt-2 max-w-sm text-xs text-[#667085]">{message}</p><button className="mt-5 rounded-xl border border-[#E4E7EC] px-4 py-2 text-xs font-semibold text-brand" onClick={onRetry} type="button">Повторить</button></div>;
+}
+
+function EmptyState() {
+  return <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><span className="flex size-12 items-center justify-center rounded-2xl bg-[#EEF0FF] text-brand"><Building2 className="size-5" /></span><h2 className="mt-4 text-base font-bold text-ink">Пространств пока нет</h2><p className="mt-2 max-w-sm text-xs leading-5 text-[#667085]">Администратор ещё не добавил помещения или ни одно из них не соответствует выбранным фильтрам.</p></div>;
 }
