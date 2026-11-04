@@ -94,6 +94,119 @@ SPACE_DEFINITIONS = (
         "map_y": 55,
         "amenities": ("wifi", "display", "video-conference"),
     },
+    {
+        "key": 'a-101',
+        "code": 'А-101',
+        "name": 'Аудитория А-101',
+        "space_type": 'classroom',
+        "capacity": 12,
+        "floor": 1,
+        "description": 'Аудитория для лекций и семинаров.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 55,
+        "map_y": 6,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+    {
+        "key": 'k-104',
+        "code": 'К-104',
+        "name": 'Коворкинг К-104',
+        "space_type": 'coworking',
+        "capacity": 12,
+        "floor": 1,
+        "description": 'Открытый коворкинг рядом с главным холлом.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 5,
+        "map_y": 6,
+        "amenities": ('wifi', 'computers'),
+    },
+    {
+        "key": 'p-1',
+        "code": 'П-1',
+        "name": 'Переговорная П-1',
+        "space_type": 'meeting_room',
+        "capacity": 6,
+        "floor": 1,
+        "description": 'Комната для встреч и командных обсуждений.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 5,
+        "map_y": 60,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+    {
+        "key": 'a-108',
+        "code": 'А-108',
+        "name": 'Аудитория А-108',
+        "space_type": 'classroom',
+        "capacity": 12,
+        "floor": 1,
+        "description": 'Тихая аудитория для самостоятельной работы.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 55,
+        "map_y": 60,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+    {
+        "key": 'k-304',
+        "code": 'К-304',
+        "name": 'Коворкинг К-304',
+        "space_type": 'coworking',
+        "capacity": 12,
+        "floor": 3,
+        "description": 'Компьютерные места для работы над проектами.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 3,
+        "map_y": 6,
+        "amenities": ('wifi', 'computers'),
+    },
+    {
+        "key": 'l-305',
+        "code": 'Л-305',
+        "name": 'Лаборатория Л-305',
+        "space_type": 'laboratory',
+        "capacity": 12,
+        "floor": 3,
+        "description": 'Проектная лаборатория с доступом по заявке.',
+        "access_policy": 'restricted',
+        "requires_approval": True,
+        "map_x": 3,
+        "map_y": 57,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+    {
+        "key": 'a-301',
+        "code": 'А-301',
+        "name": 'Аудитория А-301',
+        "space_type": 'classroom',
+        "capacity": 12,
+        "floor": 3,
+        "description": 'Учебная аудитория в восточном крыле.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 59,
+        "map_y": 6,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+    {
+        "key": 'a-308',
+        "code": 'А-308',
+        "name": 'Аудитория А-308',
+        "space_type": 'classroom',
+        "capacity": 12,
+        "floor": 3,
+        "description": 'Аудитория для практических занятий.',
+        "access_policy": 'public',
+        "requires_approval": False,
+        "map_x": 59,
+        "map_y": 57,
+        "amenities": ('wifi', 'projector', 'whiteboard'),
+    },
+
 )
 
 
@@ -149,11 +262,11 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
     await db.flush()
 
     space_by_key: dict[str, Space] = {}
-    second_floor = floor_by_number[2]
     for definition in SPACE_DEFINITIONS:
+        floor = floor_by_number[definition.get("floor", 2)]
         space = await db.scalar(
             select(Space).where(
-                Space.floor_id == second_floor.id,
+                Space.floor_id == floor.id,
                 Space.code == definition["code"],
             )
         )
@@ -173,7 +286,7 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
         if space is None:
             space = Space(
                 id=catalog_id(f"space-{definition['key']}"),
-                floor_id=second_floor.id,
+                floor_id=floor.id,
                 code=str(definition["code"]),
                 **values,
             )
@@ -192,30 +305,33 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
             if link is None:
                 db.add(SpaceAmenity(space_id=space.id, amenity_id=amenity.id))
 
-    coworking = space_by_key["k-214"]
-    for number in range(1, 13):
-        code = f"ПК-{number}"
-        workplace = await db.scalar(
-            select(Workplace).where(Workplace.space_id == coworking.id, Workplace.code == code)
-        )
-        values = {
-            "kind": "computer_seat",
-            "has_computer": True,
-            "is_active": True,
-            "map_x": 14 + ((number - 1) % 4) * 22,
-            "map_y": 18 + ((number - 1) // 4) * 28,
-        }
-        if workplace is None:
-            db.add(
-                Workplace(
-                    id=catalog_id(f"workplace-k-214-{number}"),
-                    space_id=coworking.id,
-                    code=code,
-                    **values,
-                )
+    for definition in SPACE_DEFINITIONS:
+        if definition["space_type"] != "coworking":
+            continue
+        coworking = space_by_key[str(definition["key"])]
+        for number in range(1, int(definition["capacity"]) + 1):
+            code = f"ПК-{number}"
+            workplace = await db.scalar(
+                select(Workplace).where(Workplace.space_id == coworking.id, Workplace.code == code)
             )
-        else:
-            for key, value in values.items():
-                setattr(workplace, key, value)
+            values = {
+                "kind": "computer_seat",
+                "has_computer": True,
+                "is_active": True,
+                "map_x": 14 + ((number - 1) % 4) * 22,
+                "map_y": 18 + ((number - 1) // 4) * 28,
+            }
+            if workplace is None:
+                db.add(
+                    Workplace(
+                        id=catalog_id(f"workplace-{definition['key']}-{number}"),
+                        space_id=coworking.id,
+                        code=code,
+                        **values,
+                    )
+                )
+            else:
+                for key, value in values.items():
+                    setattr(workplace, key, value)
 
     await db.commit()

@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectField } from "@/components/ui/select-field";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FocusEvent, type FormEvent } from "react";
@@ -61,7 +62,7 @@ export function RegisterForm({ redirectTo = "/dashboard" }: { redirectTo?: strin
           <AuthField autoComplete="name" error={errors.fullName} id="full-name" label="Имя и фамилия" name="fullName" onBlur={blur("fullName")} onChange={(event) => update("fullName", event.target.value)} placeholder="Имя Фамилия" value={values.fullName} />
           <AuthField autoComplete="email" error={errors.email} id="email" label="Университетская почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@university.ru" type="email" value={values.email} />
           <AuthField autoComplete="new-password" error={errors.password} id="password" label="Пароль" name="password" onBlur={blur("password")} onChange={(event) => update("password", event.target.value)} placeholder="Не менее 8 символов" type="password" value={values.password} />
-          <label className="block text-xs font-semibold text-ink" htmlFor="role">Роль<select className="mt-2 h-[50px] w-full rounded-xl border border-[#E4E7EC] bg-white px-[15px] text-sm font-medium text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10" id="role" name="role" onChange={(event) => setValues((current) => ({ ...current, role: event.target.value }))} value={values.role}><option value="student">Студент</option><option value="teacher">Преподаватель</option></select></label>
+          <label className="block text-xs font-semibold text-ink" htmlFor="role">Роль<SelectField aria-label="Роль" className="mt-2 h-[50px] text-sm" id="role" name="role" onChange={(role) => setValues((current) => ({ ...current, role }))} value={values.role} options={[{ value: "student", label: "Студент" }, { value: "teacher", label: "Преподаватель" }]} /></label>
         </div>
         <label className="mt-5 flex cursor-pointer items-start gap-3 text-xs leading-[1.45] text-[#667085]">
           <input

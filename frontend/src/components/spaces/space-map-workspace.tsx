@@ -3,8 +3,6 @@
 import {
   Building2,
   CalendarDays,
-  Check,
-  ChevronDown,
   Clock3,
   Heart,
   List,
@@ -21,11 +19,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AccountHeader as AuthenticatedHeader } from "@/components/layout/account-header";
 import { SiteHeader } from "@/components/layout/site-header";
-import { Button } from "@/components/ui";
+import { Button, SelectField } from "@/components/ui";
 import { useApiData } from "@/hooks/use-api-data";
 import { apiRequest } from "@/lib/api";
 import { ensureAuthenticated } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { filterSpaces } from "@/lib/space-filters";
 import { spaceTypeLabel } from "@/lib/format";
 import type { Booking, Space } from "@/lib/types";
 
@@ -76,6 +75,12 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
   const [building, setBuilding] = useState("");
   const [floor, setFloor] = useState<number | "">("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [query, setQuery] = useState("");
+  const [types, setTypes] = useState<string[]>([]);
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [minCapacity, setMinCapacity] = useState("");
+  const [maxCapacity, setMaxCapacity] = useState("");
+  const [approval, setApproval] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [bookingPending, setBookingPending] = useState(false);
@@ -111,12 +116,20 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
 
   const buildings = useMemo(() => Array.from(new Set((spaces ?? []).map((space) => space.building_code))).sort(), [spaces]);
   const floors = useMemo(() => Array.from(new Set((spaces ?? []).filter((space) => !building || space.building_code === building).map((space) => space.floor_number))).sort((a, b) => a - b), [building, spaces]);
-  const visibleSpaces = useMemo(() => (spaces ?? []).filter((space) =>
-    (!building || space.building_code === building)
-    && (floor === "" || space.floor_number === floor)
-    && (!onlyAvailable || space.is_available),
-  ), [building, floor, onlyAvailable, spaces]);
-  const selected = spaces?.find((space) => space.id === selectedId) ?? null;
+  const availableTypes = useMemo(() => [...new Set((spaces ?? []).map((space) => space.space_type))].sort((a, b) => spaceTypeLabel(a).localeCompare(spaceTypeLabel(b), "ru")), [spaces]);
+  const availableAmenities = useMemo(() => [...new Set((spaces ?? []).flatMap((space) => space.amenities))].sort((a, b) => a.localeCompare(b, "ru")), [spaces]);
+  const invalidCapacity = Boolean(minCapacity && maxCapacity && Number(minCapacity) > Number(maxCapacity));
+  const visibleSpaces = useMemo(() => filterSpaces(spaces ?? [], { building, floor, onlyAvailable, query, types, amenities, minCapacity, maxCapacity, approval }), [spaces, building, floor, onlyAvailable, query, types, amenities, minCapacity, maxCapacity, approval]);
+  const hasFilters = Boolean(building || floor !== "" || onlyAvailable || query || types.length || amenities.length || minCapacity || maxCapacity || approval);
+  const mapFloors = useMemo(() => {
+    const groups = new Map<string, Space[]>();
+    for (const space of visibleSpaces) {
+      const key = `${space.building_code}-${space.floor_number}`;
+      groups.set(key, [...(groups.get(key) ?? []), space]);
+    }
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "ru", { numeric: true }));
+  }, [visibleSpaces]);
+  const selected = visibleSpaces.find((space) => space.id === selectedId) ?? null;
 
   const chooseSpace = (space: Space) => {
     setSelectedId(space.id);
@@ -191,6 +204,12 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
     setBuilding("");
     setFloor("");
     setOnlyAvailable(false);
+    setQuery("");
+    setTypes([]);
+    setAmenities([]);
+    setMinCapacity("");
+    setMaxCapacity("");
+    setApproval("");
   };
 
   return (
@@ -232,20 +251,31 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
             {floors.map((number) => <button className={cn("flex h-10 items-center rounded-[10px] px-3 text-xs font-semibold", floor === number ? "bg-brand text-white" : "text-[#475467] hover:bg-[#F5F6FF]")} key={number} onClick={() => setFloor(number)} type="button">{number} этаж</button>)}
           </div>
           <div className="my-5 h-px bg-[#E7E9EE]" />
-          <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-[#475467]">
-            <input checked={onlyAvailable} className="peer sr-only" onChange={(event) => setOnlyAvailable(event.target.checked)} type="checkbox" />
-            <span className="flex size-[18px] items-center justify-center rounded border border-[#C9CFD8] bg-white peer-checked:border-brand peer-checked:bg-brand"><Check className="size-3 text-white" /></span>
-            Только свободные
-          </label>
+          <FilterCheckbox checked={onlyAvailable} onChange={setOnlyAvailable} label="Только свободные" />
+          <p className="mt-2 text-[10px] leading-4 text-[#667085]">На выбранные дату и время</p>
+          <div className="mt-5 space-y-5">
+            <label className="block text-xs font-semibold text-ink">Поиск
+              <input className="mt-2 h-10 w-full min-w-0 rounded-lg border border-[#DFE3E9] px-3 text-xs font-normal outline-none focus:border-brand" onChange={(event) => setQuery(event.target.value)} placeholder="Название или номер" type="search" value={query} />
+            </label>
+            <fieldset><legend className="mb-3 text-xs font-semibold text-ink">Тип помещения</legend><div className="space-y-2.5">{availableTypes.map((type) => <FilterCheckbox key={type} checked={types.includes(type)} label={spaceTypeLabel(type)} onChange={(checked) => setTypes((current) => checked ? [...current, type] : current.filter((item) => item !== type))} />)}</div></fieldset>
+            <fieldset><legend className="text-xs font-semibold text-ink">Вместимость помещения</legend>
+              <div className="mt-3 grid grid-cols-2 gap-2">{([{ label: "От", value: minCapacity, change: setMinCapacity }, { label: "До", value: maxCapacity, change: setMaxCapacity }]).map(({ label, value, change }) => <label className="text-[10px] text-[#667085]" key={label}>{label}<input aria-invalid={invalidCapacity} aria-describedby={invalidCapacity ? "capacity-error" : undefined} className="mt-1 h-10 w-full min-w-0 rounded-lg border border-[#DFE3E9] px-2 text-xs text-ink outline-none focus:border-brand" min="1" step="1" inputMode="numeric" onChange={(event) => { const next = event.target.value; if (!next || /^\d+$/.test(next) && Number(next) >= 1) change(next); }} placeholder="Мест" type="number" value={value} /></label>)}</div>
+              {invalidCapacity && <p className="mt-2 text-[10px] text-red-600" id="capacity-error">Значение «От» не должно превышать «До».</p>}
+            </fieldset>
+            <fieldset><legend className="mb-2 text-xs font-semibold text-ink">Оснащение</legend><p className="mb-3 text-[10px] leading-4 text-[#667085]">Все выбранные удобства</p><div className="space-y-2.5">{availableAmenities.map((amenity) => <FilterCheckbox key={amenity} checked={amenities.includes(amenity)} label={amenity} onChange={(checked) => setAmenities((current) => checked ? [...current, amenity] : current.filter((item) => item !== amenity))} />)}</div></fieldset>
+            <label className="block text-xs font-semibold text-ink">Бронирование<SelectField aria-label="Бронирование" className="mt-2 h-10" value={approval} onChange={setApproval} options={[{ value: "", label: "Любое" }, { value: "instant", label: "Без согласования" }, { value: "request", label: "По заявке" }]} /></label>
+            {hasFilters && <button className="text-xs font-semibold text-brand" type="button" onClick={reset}>Сбросить фильтры</button>}
+          </div>
         </aside>
 
         <section className="min-w-0 overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white">
           {view === "list" && <div className="border-b border-[#E7E9EE] px-5 py-4"><h1 className="text-xl font-bold text-ink">Пространства кампуса</h1><p className="mt-1 text-[11px] text-[#667085]">Данные о помещениях и доступности загружаются из системы.</p></div>}
+          {!loading && !error && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E7E9EE] px-5 py-3 text-xs text-[#667085]"><span role="status">Найдено помещений: {visibleSpaces.length} из {spaces?.length ?? 0}</span>{hasFilters && <button className="font-semibold text-brand" type="button" onClick={reset}>Сбросить фильтры</button>}</div>}
           {loading && <LoadingState />}
           {!loading && error && <ErrorState message={error} onRetry={reload} />}
-          {!loading && !error && visibleSpaces.length === 0 && <EmptyState />}
+          {!loading && !error && visibleSpaces.length === 0 && (hasFilters ? <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><h2 className="text-base font-bold text-ink">Ничего не найдено</h2><p className="mt-2 text-xs leading-5 text-[#667085]">Измените вместимость или снимите часть фильтров.</p><button className="mt-4 text-sm font-semibold text-brand" onClick={reset} type="button">Сбросить фильтры</button></div> : <EmptyState />)}
           {!loading && !error && visibleSpaces.length > 0 && view === "map" && (
-            <FigmaFloorMap onSelect={chooseSpace} onWorkplace={(space, id) => { chooseSpace(space); setSelectedWorkplaceId(id); }} selectedWorkplaceId={selectedWorkplaceId} selectedId={selectedId} spaces={visibleSpaces} />
+            <div className="divide-y divide-[#E7E9EE]">{mapFloors.map(([key, floorSpaces]) => <FigmaFloorMap key={key} onSelect={chooseSpace} onWorkplace={(space, id) => { chooseSpace(space); setSelectedWorkplaceId(id); }} selectedWorkplaceId={selectedWorkplaceId} selectedId={selectedId} spaces={floorSpaces} />)}</div>
           )}
           {!loading && !error && visibleSpaces.length > 0 && view === "list" && (
             <div className="space-y-3 p-5">
@@ -271,11 +301,15 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
   );
 }
 
+function FilterCheckbox({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-[#475467]"><input checked={checked} className="mt-0.5 size-4 shrink-0 accent-[#3346C8]" onChange={(event) => onChange(event.target.checked)} type="checkbox" /><span>{label}</span></label>;
+}
+
 function SelectFilter({ icon: Icon, label, value, options, placeholder, onChange }: { icon: typeof Building2; label: string; value: string; options: string[]; placeholder: string; onChange: (value: string) => void }) {
   return (
     <label className="min-w-[150px] flex-1 xl:max-w-[200px]">
       <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">{label}</span>
-      <span className="relative flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3 text-xs font-semibold text-ink"><Icon className="size-4 text-[#667085]" /><select className="min-w-0 flex-1 appearance-none bg-transparent pr-5 outline-none" onChange={(event) => onChange(event.target.value)} value={value}><option value="">{placeholder}</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 size-3.5 text-[#98A2B3]" /></span>
+      <SelectField aria-label={label} icon={<Icon className="size-4 shrink-0 text-[#667085]" />} onChange={onChange} value={value} options={[{ value: "", label: placeholder }, ...options.map((option) => ({ value: option, label: option }))]} />
     </label>
   );
 }
@@ -376,6 +410,9 @@ function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWo
             }}
             style={{ transform: `translate(${panX}px, ${panY}px) scale(${scale * zoom})`, transformOrigin: "top left" }}
           >
+            {first.floor_number === 1 || first.floor_number === 3 ? (
+              <AdditionalFloorLayout floor={first.floor_number} spaces={floorSpaces} selectedId={selectedId} selectedWorkplaceId={selectedWorkplaceId} onSelect={onSelect} onWorkplace={onWorkplace} />
+            ) : <>
             <div className="absolute left-[42px] top-[270px] flex h-[84px] w-[682px] items-center justify-center rounded-[12px] border border-[#E4E7EC] bg-white text-[10px] font-bold text-[#667085]">КОРИДОР</div>
 
             {a201 && (
@@ -429,6 +466,7 @@ function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWo
                 <MeetingFurniture available={meeting.is_available} />
               </FigmaRoom>
             )}
+            </>}
           </div>
         </div>
 
@@ -443,6 +481,39 @@ function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWo
       </div>
     </div>
   );
+}
+
+function AdditionalFloorLayout({ floor, spaces, selectedId, selectedWorkplaceId, onSelect, onWorkplace }: { floor: number; spaces: Space[]; selectedId: string; selectedWorkplaceId: string; onSelect: (space: Space) => void; onWorkplace: (space: Space, id: string) => void }) {
+  const rooms = floor === 1 ? [
+    { code: "К-104", position: "left-[38px] top-[38px] h-[212px] w-[330px]" },
+    { code: "А-101", position: "left-[428px] top-[38px] h-[212px] w-[300px]" },
+    { code: "П-1", position: "left-[38px] top-[390px] h-[212px] w-[330px]" },
+    { code: "А-108", position: "left-[428px] top-[390px] h-[212px] w-[300px]" },
+  ] : [
+    { code: "К-304", position: "left-[24px] top-[38px] h-[212px] w-[330px]" },
+    { code: "Л-305", position: "left-[24px] top-[370px] h-[240px] w-[330px]" },
+    { code: "А-301", position: "left-[454px] top-[38px] h-[240px] w-[288px]" },
+    { code: "А-308", position: "left-[454px] top-[370px] h-[240px] w-[288px]" },
+  ];
+  return <>
+    {floor === 1 ? <>
+      <div className="absolute left-[38px] top-[270px] flex h-[100px] w-[690px] items-center justify-center rounded-xl border border-[#E4E7EC] bg-white text-xs font-semibold text-[#667085]">ГЛАВНЫЙ ХОЛЛ · ВХОД</div>
+      <div className="absolute left-[376px] top-[38px] flex h-[212px] w-[44px] items-center justify-center rounded-lg bg-[#EEF0FF] text-xs text-[#667085] [writing-mode:vertical-rl]">Лестница ↑</div>
+      <div className="absolute left-[376px] top-[390px] flex h-[212px] w-[44px] items-center justify-center rounded-lg bg-white text-xs text-[#667085]">WC</div>
+    </> : <>
+      <div className="absolute left-[370px] top-[38px] flex h-[572px] w-[68px] items-center justify-center rounded-xl border border-[#E4E7EC] bg-white text-xs font-semibold text-[#667085] [writing-mode:vertical-rl]">КОРИДОР · 3 ЭТАЖ</div>
+      <div className="absolute left-[24px] top-[270px] flex h-[80px] w-[330px] items-center justify-center rounded-xl border border-[#E4E7EC] bg-white text-xs text-[#667085]">Лестница · Зона отдыха</div>
+      <div className="absolute left-[454px] top-[298px] flex h-[52px] w-[288px] items-center justify-center rounded-xl bg-white text-xs text-[#667085]">WC · Лифт</div>
+    </>}
+    {rooms.map(({ code, position }) => {
+      const space = spaces.find((item) => item.code === code);
+      if (!space) return null;
+      return <FigmaRoom key={space.id} className={position} space={space} selected={selectedId === space.id} onSelect={onSelect} title={`${space.code} · ${spaceTypeLabel(space.space_type)}`}>
+        <p className="absolute left-[13px] top-[37px] text-[10px] text-[#667085]">{space.workplaces.length ? `${space.workplaces.length} компьютерных мест` : `${space.capacity} мест`}{space.requires_approval ? " · По заявке" : ""}</p>
+        {space.workplaces.length > 0 ? <div className="absolute inset-x-[11px] top-[63px]"><WorkplacePlan space={space} selectedId={selectedWorkplaceId} onSelect={(id) => onWorkplace(space, id)} /></div> : space.space_type === "laboratory" ? <div className="absolute left-[65px] top-0"><LabFurniture available={space.is_available} /></div> : space.space_type === "meeting_room" ? <div className="absolute -left-[65px] top-[80px]"><MeetingFurniture available={space.is_available} /></div> : <ClassroomFurniture available={space.is_available} teacherDesk />}
+      </FigmaRoom>;
+    })}
+  </>;
 }
 
 function FigmaMapLegend({ asset, label }: { asset: string; label: string }) {

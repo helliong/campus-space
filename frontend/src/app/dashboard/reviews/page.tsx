@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, CheckCircle2, MessageSquareText, Star } from "lucide-react";
+import { SelectField } from "@/components/ui/select-field";
 import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 
@@ -22,7 +23,8 @@ export default function DashboardReviewsPage() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!bookingId || text.trim().length < 10) return;
+    if (!bookingId) { setSubmitError("Выберите завершённую бронь."); return; }
+    if (text.trim().length < 10) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -47,7 +49,7 @@ export default function DashboardReviewsPage() {
       {!bookingsState.loading && reviewable.length > 0 && (
         <section className="mt-8 scroll-mt-6 overflow-hidden rounded-[22px] bg-brand text-white" id="new-review">
           <form className="grid lg:grid-cols-[1fr_340px]" onSubmit={submit}>
-            <div className="p-6 sm:p-8"><span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-[#E2E6FF]"><span className="size-1.5 rounded-full bg-[#FFD76A]" />Проверенное бронирование</span><h2 className="mt-5 text-2xl font-bold">Поделитесь впечатлением</h2><label className="mt-5 block text-xs font-semibold text-[#E2E6FF]">Посещение<select className="mt-2 h-11 w-full rounded-xl border border-white/15 bg-white/10 px-3 text-sm text-white outline-none" onChange={(event) => setBookingId(event.target.value)} required value={bookingId}><option className="text-ink" value="">Выберите завершённую бронь</option>{reviewable.map((booking) => <option className="text-ink" key={booking.id} value={booking.id}>{booking.space_name} · {formatDate(booking.ends_at, true)}</option>)}</select></label><div className="mt-5"><p className="text-xs font-semibold text-[#E2E6FF]">Оценка</p><div className="mt-2 flex gap-2">{[1, 2, 3, 4, 5].map((value) => <button aria-label={`${value} звёзд`} className="text-[#FFD76A]" key={value} onClick={() => setScore(value)} type="button"><Star className="size-7" fill={value <= score ? "currentColor" : "none"} /></button>)}</div></div><label className="mt-5 block text-xs font-semibold text-[#E2E6FF]">Комментарий<textarea className="mt-2 min-h-24 w-full resize-y rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm text-white outline-none placeholder:text-[#AEB7F1]" minLength={10} onChange={(event) => setText(event.target.value)} placeholder="Расскажите о комфорте и оснащении" required value={text} /></label>{submitError && <p className="mt-3 text-xs text-[#FFD0D7]" role="alert">{submitError}</p>}</div>
+            <div className="p-6 sm:p-8"><span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-[#E2E6FF]"><span className="size-1.5 rounded-full bg-[#FFD76A]" />Проверенное бронирование</span><h2 className="mt-5 text-2xl font-bold">Поделитесь впечатлением</h2><label className="mt-5 block text-xs font-semibold text-[#E2E6FF]">Посещение<SelectField aria-label="Посещение" className="mt-2 border-white/20 bg-white/10 text-white hover:border-white/40" onChange={setBookingId} required value={bookingId} options={[{ value: "", label: "Выберите завершённую бронь", disabled: true }, ...reviewable.map((booking) => ({ value: booking.id, label: `${booking.space_name} · ${formatDate(booking.ends_at, true)}` }))]} /></label><div className="mt-5"><p className="text-xs font-semibold text-[#E2E6FF]">Оценка</p><div className="mt-2 flex gap-2">{[1, 2, 3, 4, 5].map((value) => <button aria-label={`${value} звёзд`} className="text-[#FFD76A]" key={value} onClick={() => setScore(value)} type="button"><Star className="size-7" fill={value <= score ? "currentColor" : "none"} /></button>)}</div></div><label className="mt-5 block text-xs font-semibold text-[#E2E6FF]">Комментарий<textarea className="mt-2 min-h-24 w-full resize-y rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-sm text-white outline-none placeholder:text-[#AEB7F1]" minLength={10} onChange={(event) => setText(event.target.value)} placeholder="Расскажите о комфорте и оснащении" required value={text} /></label>{submitError && <p className="mt-3 text-xs text-[#FFD0D7]" role="alert">{submitError}</p>}</div>
             <div className="flex flex-col justify-center border-t border-white/10 bg-white/[0.06] p-6 lg:border-l lg:border-t-0"><p className="text-sm font-semibold">Оценка применяется к чистоте, оснащению и комфорту.</p><p className="mt-2 text-xs leading-5 text-[#C8CFFF]">Отзыв будет связан с реальным бронированием и опубликован от вашего имени.</p><button className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-semibold text-brand disabled:opacity-60" disabled={submitting || !bookingId || text.trim().length < 10} type="submit">{submitting ? "Публикуем…" : "Опубликовать"}<ArrowRight className="size-4" /></button></div>
           </form>
         </section>

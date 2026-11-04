@@ -27,7 +27,7 @@ export default function UiKitPage() {
           <Button>Забронировать</Button><Button variant="secondary">Забронировать</Button><Button variant="destructive">Забронировать</Button>
         </Showcase>
         <Showcase title="Selectors & filters">
-          <SelectField aria-label="Дата"><option value="today">Сегодня</option></SelectField><FilterChip>ПК</FilterChip><FilterChip selected>Проектор</FilterChip><FilterChip>До 10 мест</FilterChip>
+          <SelectField aria-label="Дата" className="w-[260px]" options={[{ value: "today", label: "Сегодня" }, { value: "tomorrow", label: "Завтра" }]} /><FilterChip>ПК</FilterChip><FilterChip selected>Проектор</FilterChip><FilterChip>До 10 мест</FilterChip>
         </Showcase>
         <Showcase title="Availability">
           {statuses.map((status) => <AvailabilityBadge key={status} status={status} />)}
