@@ -10,14 +10,17 @@ import {
   List,
   Map as MapIcon,
   MapPin,
+  Maximize2,
   Monitor,
   Projector,
   RotateCcw,
   Star,
   Users,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { AccountHeader as AuthenticatedHeader } from "@/components/layout/account-header";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -686,6 +689,7 @@ function getSpaceImageUrl(space: Space): string {
 function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
   const [mode, setMode] = useState<"photo" | "scheme">("photo");
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
   const images = getSpaceImages(space);
   const selectedWorkplace = space.workplaces.find((item) => item.id === selectedId);
 
@@ -693,6 +697,18 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
   useEffect(() => {
     setPhotoIndex(0);
   }, [space.id]);
+
+  // Управление с клавиатуры в полноэкранном режиме
+  useEffect(() => {
+    if (!fullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+      if (e.key === "ArrowLeft") setPhotoIndex((prev) => (prev - 1 + images.length) % images.length);
+      if (e.key === "ArrowRight") setPhotoIndex((prev) => (prev + 1) % images.length);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fullscreen, images.length]);
 
   const prevPhoto = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -709,7 +725,11 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
   return (
     <div className="relative overflow-hidden bg-[#F5F6FF]">
       {mode === "photo" ? (
-        <div className="group relative h-48 w-full select-none overflow-hidden bg-[#EEF0FF]">
+        <div
+          className="group relative h-48 w-full cursor-zoom-in select-none overflow-hidden bg-[#EEF0FF]"
+          onClick={() => setFullscreen(true)}
+          title="Нажмите, чтобы открыть фото на весь экран"
+        >
           <img
             alt={`Фотография ${photoIndex + 1} из ${images.length}: ${space.name}`}
             className="size-full object-cover"
@@ -718,7 +738,7 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/35" />
 
           {/* Код помещения и счётчик слайдов */}
-          <div className="absolute left-3 top-2.5 flex items-center gap-1.5">
+          <div className="absolute left-3 top-2.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             <span className="rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
               {space.code}
             </span>
@@ -730,7 +750,7 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
           </div>
 
           {/* Переключатель Фото / Схема */}
-          <div className="absolute right-2.5 top-2.5 flex rounded-lg bg-black/60 p-0.5 backdrop-blur-sm">
+          <div className="absolute right-2.5 top-2.5 flex rounded-lg bg-black/60 p-0.5 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
             <button
               className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", "bg-white text-ink shadow-sm")}
               onClick={() => setMode("photo")}
@@ -746,6 +766,20 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
               Схема
             </button>
           </div>
+
+          {/* Кнопка открытия на весь экран в правом нижнем углу */}
+          <button
+            aria-label="Открыть фото на весь экран"
+            className="absolute bottom-2.5 right-3 flex size-7 items-center justify-center rounded-md bg-black/60 text-white/90 shadow-sm backdrop-blur-sm transition hover:bg-black/80 hover:text-white focus-visible:outline-none"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFullscreen(true);
+            }}
+            title="Открыть на весь экран"
+            type="button"
+          >
+            <Maximize2 className="size-3.5" />
+          </button>
 
           {/* Стрелки перелистывания карусели */}
           {images.length > 1 && (
@@ -771,7 +805,7 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
 
           {/* Точечные индикаторы (буллеты) */}
           {images.length > 1 && (
-            <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+            <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
               {images.map((_, idx) => (
                 <button
                   aria-label={`Перейти к фото ${idx + 1}`}
@@ -792,7 +826,7 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
 
           {/* Индикатор выбранного ПК */}
           {selectedWorkplace && (
-            <div className="absolute bottom-2.5 left-3">
+            <div className="absolute bottom-2.5 left-3" onClick={(e) => e.stopPropagation()}>
               <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
                 Выбрано: {selectedWorkplace.code}
               </span>
@@ -828,6 +862,98 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
             </div>
           )}
         </div>
+      )}
+
+      {/* Полноэкранный модальный просмотр фото (Lightbox) */}
+      {fullscreen && typeof document !== "undefined" && createPortal(
+        <div
+          aria-label="Просмотр фотографии на весь экран"
+          aria-modal="true"
+          className="fixed inset-0 z-[2000] flex select-none flex-col items-center justify-center bg-black/95 p-4 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setFullscreen(false)}
+          role="dialog"
+        >
+          {/* Верхняя панель: название, код, счётчик и крестик закрытия */}
+          <div
+            className="absolute inset-x-6 top-4 z-20 flex items-center justify-between text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-sm font-bold sm:text-base">{space.name}</span>
+              <span className="rounded-md bg-white/20 px-2.5 py-0.5 text-xs font-semibold">{space.code}</span>
+              {images.length > 1 && (
+                <span className="text-xs text-white/70">
+                  Фото {photoIndex + 1} из {images.length}
+                </span>
+              )}
+            </div>
+            <button
+              aria-label="Закрыть полноэкранный просмотр"
+              className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              onClick={() => setFullscreen(false)}
+              title="Закрыть (Esc)"
+              type="button"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+
+          {/* Изображение в центре */}
+          <div
+            className="relative flex max-h-[82vh] max-w-[92vw] items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              alt={`Фотография ${photoIndex + 1} из ${images.length}: ${space.name}`}
+              className="max-h-[80vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+              src={currentImage}
+            />
+          </div>
+
+          {/* Кнопки перелистывания в полноэкранном режиме */}
+          {images.length > 1 && (
+            <>
+              <button
+                aria-label="Предыдущее фото"
+                className="absolute left-4 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:left-8"
+                onClick={prevPhoto}
+                type="button"
+              >
+                <ChevronLeft className="size-6" />
+              </button>
+              <button
+                aria-label="Следующее фото"
+                className="absolute right-4 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:right-8"
+                onClick={nextPhoto}
+                type="button"
+              >
+                <ChevronRight className="size-6" />
+              </button>
+            </>
+          )}
+
+          {/* Точки-индикаторы внизу полноэкранного режима */}
+          {images.length > 1 && (
+            <div
+              className="absolute bottom-6 z-20 flex items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {images.map((_, idx) => (
+                <button
+                  aria-label={`Перейти к фото ${idx + 1}`}
+                  className={cn(
+                    "h-2 rounded-full transition-all focus-visible:outline-none",
+                    idx === photoIndex ? "w-7 bg-white" : "w-2 bg-white/40 hover:bg-white/70"
+                  )}
+                  key={idx}
+                  onClick={() => setPhotoIndex(idx)}
+                  type="button"
+                />
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );
