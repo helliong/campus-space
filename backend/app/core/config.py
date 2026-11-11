@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     cookie_secure: bool = False
+    upload_directory: str = "uploads"
 
     @property
     def cors_origins(self) -> list[str]:

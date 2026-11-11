@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/ui";
 import { useApiData } from "@/hooks/use-api-data";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatRole, initials } from "@/lib/format";
 import type { User } from "@/lib/types";
@@ -178,7 +178,7 @@ export function AccountHeader({ active }: AccountHeaderProps) {
               }}
               type="button"
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EEF0FF] text-xs font-bold text-brand">{user ? initials(user.full_name) : ""}</span>
+              <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#EEF0FF] text-xs font-bold text-brand">{user?.avatar_url ? <img alt="" className="size-full object-cover" src={mediaUrl(user.avatar_url) ?? undefined} /> : user ? initials(user.full_name) : ""}</span>
               <span className="hidden min-w-[86px] sm:block">
                 <span className="block max-w-[150px] truncate text-xs font-semibold text-ink">{user?.full_name ?? "Профиль"}</span>
                 <span className="mt-0.5 block text-[10px] text-[#667085]">{user ? formatRole(user.role) : ""}</span>

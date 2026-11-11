@@ -38,6 +38,10 @@ body {
   min-height: 100%;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -51,4 +55,54 @@ select,
 input,
 textarea {
   font: inherit;
+}
+
+@keyframes review-modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes review-modal-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes review-modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.review-modal-backdrop {
+  animation: review-modal-backdrop-in 180ms ease-out both;
+}
+
+.review-modal-panel {
+  animation: review-modal-sheet-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+@media (min-width: 640px) {
+  .review-modal-panel {
+    animation-name: review-modal-dialog-in;
+    animation-duration: 220ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-modal-backdrop,
+  .review-modal-panel {
+    animation-duration: 1ms;
+  }
 }

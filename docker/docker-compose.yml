@@ -29,6 +29,7 @@ services:
       - "8000:8000"
     volumes:
       - ../backend:/app
+      - avatar_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,3 +82,4 @@ services:
 volumes:
   frontend_node_modules:
   postgres_data:
+  avatar_uploads:

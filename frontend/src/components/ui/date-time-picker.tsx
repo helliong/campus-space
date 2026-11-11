@@ -163,13 +163,18 @@ const TIME_SLOTS = Array.from({ length: 48 }, (_, index) => {
   return `${String(hours).padStart(2, "0")}:${minutes}`;
 });
 
-export function TimePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function TimePicker({ date, value, onChange }: { date: string; value: string; onChange: (value: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const rootRef = usePopover(open, () => setOpen(false));
   const selectedRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (open) requestAnimationFrame(() => selectedRef.current?.scrollIntoView({ block: "center" }));
+    if (!open) return;
+    setNow(Date.now());
+    requestAnimationFrame(() => selectedRef.current?.scrollIntoView({ block: "center" }));
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, [open]);
 
   return (
@@ -196,19 +201,22 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (valu
         <div className="absolute right-0 top-[calc(100%+10px)] z-[100] w-[min(300px,calc(100vw-40px))] overflow-hidden rounded-2xl border border-[#E1E5EA] bg-white shadow-[0_20px_50px_-12px_rgba(28,36,52,0.28)]" role="dialog" aria-label="Выбор времени">
           <div className="border-b border-[#EEF0F3] px-4 py-3.5">
             <p className="text-sm font-extrabold text-ink">Выберите время</p>
-            <p className="mt-0.5 text-[10px] font-medium text-[#98A2B3]">Интервал бронирования — 30 минут</p>
+            <p className="mt-0.5 text-[10px] font-medium text-[#98A2B3]">Интервал — 30 минут · прошедшие слоты недоступны</p>
           </div>
           <div className="max-h-[268px] overflow-y-auto p-3">
             <div className="grid grid-cols-4 gap-1.5">
               {TIME_SLOTS.map((time) => {
                 const selected = time === value;
+                const disabled = new Date(`${date}T${time}:00`).getTime() <= now;
                 return (
                   <button
                     aria-pressed={selected}
                     className={cn(
                       "flex h-10 items-center justify-center gap-1 rounded-[10px] text-[12px] font-bold tabular-nums transition",
-                      selected ? "bg-brand text-white shadow-[0_5px_12px_rgba(51,70,200,0.28)]" : "bg-[#F7F8FA] text-[#475467] hover:bg-[#EEF0FF] hover:text-brand",
+                      disabled && "cursor-not-allowed bg-[#F2F4F7] text-[#C0C5CE]",
+                      !disabled && selected ? "bg-brand text-white shadow-[0_5px_12px_rgba(51,70,200,0.28)]" : !disabled && "bg-[#F7F8FA] text-[#475467] hover:bg-[#EEF0FF] hover:text-brand",
                     )}
+                    disabled={disabled}
                     key={time}
                     onClick={() => { onChange(time); setOpen(false); }}
                     ref={selected ? selectedRef : undefined}

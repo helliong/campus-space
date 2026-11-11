@@ -51,6 +51,8 @@ class BookingCreate(BaseModel):
     def validate_target_and_period(self) -> Self:
         if (self.space_id is None) == (self.workplace_id is None):
             raise ValueError("Choose exactly one space or workplace")
+        if self.starts_at.utcoffset() is None or self.ends_at.utcoffset() is None:
+            raise ValueError("Booking timestamps must include a timezone")
         if self.starts_at >= self.ends_at:
             raise ValueError("Booking end must be after start")
         return self

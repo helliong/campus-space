@@ -1,5 +1,13 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+export function mediaUrl(value: string | null | undefined) {
+  if (!value) return null;
+  if (/^(?:https?:|data:|blob:)/.test(value)) return value;
+  const fallbackOrigin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
+  const apiOrigin = new URL(API_URL, fallbackOrigin).origin;
+  return new URL(value, apiOrigin).toString();
+}
+
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {
     super(message);

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
+from pathlib import Path
+from time import time
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.media import AVATAR_DIRECTORY
 from app.core.rate_limit import (
     check_login_rate_limit,
     clear_failed_logins,
@@ -39,6 +44,46 @@ from app.schemas.auth import (
 router = APIRouter()
 bearer_scheme = HTTPBearer(auto_error=False)
 REFRESH_COOKIE_NAME = "campus_space_refresh_token"
+MAX_AVATAR_SIZE = 5 * 1024 * 1024
+MAX_AVATAR_PIXELS = 25_000_000
+AVATAR_DIMENSION = 512
+AVATAR_WEBP_QUALITY = 70
+AVATAR_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def avatar_to_webp(data: bytes) -> bytes:
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if source.width * source.height > MAX_AVATAR_PIXELS:
+                raise ValueError("Image dimensions are too large")
+            source.seek(0)
+            oriented = ImageOps.exif_transpose(source)
+            mode = "RGBA" if "A" in oriented.getbands() else "RGB"
+            normalized = ImageOps.fit(
+                oriented.convert(mode),
+                (AVATAR_DIMENSION, AVATAR_DIMENSION),
+                method=Image.Resampling.LANCZOS,
+            )
+            output = BytesIO()
+            normalized.save(
+                output,
+                format="WEBP",
+                quality=AVATAR_WEBP_QUALITY,
+                method=6,
+            )
+            return output.getvalue()
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Файл не является корректным изображением JPEG, PNG или WebP",
+        ) from exc
+
+
+def remove_avatar_files(user_id: UUID, keep: Path | None = None) -> None:
+    for extension in ("jpg", "png", "webp"):
+        candidate = AVATAR_DIRECTORY / f"{user_id}.{extension}"
+        if candidate != keep:
+            candidate.unlink(missing_ok=True)
 
 
 def credentials_error() -> HTTPException:
@@ -237,6 +282,52 @@ async def update_me(
 ) -> User:
     for field, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(current_user, field, value)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.put("/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if request.headers.get("content-type", "").split(";", 1)[0].lower() not in AVATAR_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Поддерживаются только изображения JPEG, PNG и WebP",
+        )
+
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_AVATAR_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Размер изображения не должен превышать 5 МБ",
+            )
+
+    webp_content = avatar_to_webp(bytes(content))
+    target = AVATAR_DIRECTORY / f"{current_user.id}.webp"
+    temporary = AVATAR_DIRECTORY / f".{current_user.id}.webp.tmp"
+    temporary.write_bytes(webp_content)
+    temporary.replace(target)
+    remove_avatar_files(current_user.id, keep=target)
+
+    current_user.avatar_url = f"/uploads/avatars/{target.name}?v={int(time())}"
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.delete("/me/avatar", response_model=UserResponse)
+async def delete_avatar(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    remove_avatar_files(current_user.id)
+    current_user.avatar_url = None
     await db.commit()
     await db.refresh(current_user)
     return current_user

@@ -25,6 +25,7 @@ import { createPortal } from "react-dom";
 
 import { AccountHeader as AuthenticatedHeader } from "@/components/layout/account-header";
 import { SiteHeader } from "@/components/layout/site-header";
+import { SpaceReviewsDialog } from "@/components/spaces/space-reviews-dialog";
 import { Button, SelectField } from "@/components/ui";
 import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
 import { useApiData } from "@/hooks/use-api-data";
@@ -43,16 +44,22 @@ type InitialBooking = {
   resume?: boolean;
 };
 
-function localDate() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+function localDate(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function nextHalfHour() {
-  const now = new Date();
-  now.setSeconds(0, 0);
-  now.setMinutes(now.getMinutes() < 30 ? 30 : 60);
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+function nextBookingSlot(from = new Date()) {
+  const slot = new Date(from);
+  slot.setSeconds(0, 0);
+  slot.setMinutes(slot.getMinutes() < 30 ? 30 : 60);
+  return {
+    date: localDate(slot),
+    time: `${String(slot.getHours()).padStart(2, "0")}:${String(slot.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
+function isFutureSlot(date: string, time: string, now = Date.now()) {
+  return new Date(`${date}T${time}:00`).getTime() > now;
 }
 
 function bookingPath(spaceId: string, date: string, slot: string, workplaceId: string, resume = false) {
@@ -68,10 +75,25 @@ function initialsFromCode(code: string) {
 
 export function SpaceMapWorkspace({ authenticated, initialBooking }: { authenticated: boolean; initialBooking?: InitialBooking }) {
   const router = useRouter();
+  const [initialSlot] = useState(() => {
+    const validDate = initialBooking?.date && /^\d{4}-\d{2}-\d{2}$/.test(initialBooking.date);
+    const validTime = initialBooking?.slot && /^\d{2}:\d{2}$/.test(initialBooking.slot);
+    if (validDate && validTime && isFutureSlot(initialBooking.date!, initialBooking.slot!)) {
+      return { date: initialBooking.date!, time: initialBooking.slot!, canResume: true };
+    }
+    return { ...nextBookingSlot(), canResume: false };
+  });
   const [selectedId, setSelectedId] = useState("");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
-  const [selectedDate, setSelectedDate] = useState(initialBooking?.date && /^\d{4}-\d{2}-\d{2}$/.test(initialBooking.date) ? initialBooking.date : localDate());
-  const [selectedTime, setSelectedTime] = useState(initialBooking?.slot && /^\d{2}:\d{2}$/.test(initialBooking.slot) ? initialBooking.slot : nextHalfHour());
+  const [selectedDate, setSelectedDate] = useState(initialSlot.date);
+  const [selectedTime, setSelectedTime] = useState(initialSlot.time);
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const nextAvailableSlot = useMemo(() => nextBookingSlot(new Date(clock)), [clock]);
+  const selectedSlotIsPast = !isFutureSlot(selectedDate, selectedTime, clock);
   const availabilityPath = useMemo(() => {
     const startsAt = new Date(`${selectedDate}T${selectedTime}:00`);
     if (Number.isNaN(startsAt.getTime())) return "/spaces";
@@ -148,6 +170,10 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
 
   const submitBooking = useCallback(async () => {
     if (!selected || bookingPending) return;
+    if (!isFutureSlot(selectedDate, selectedTime)) {
+      setBookingMessage("Выберите дату и время, которые ещё не прошли.");
+      return;
+    }
     if (selected.workplaces.length > 0 && !selected.workplaces.some((item) => item.id === selectedWorkplaceId && item.is_available)) {
       setBookingMessage("Сначала выберите конкретное рабочее место.");
       return;
@@ -185,10 +211,10 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
   }, [bookingPending, reload, router, selected, selectedDate, selectedTime, selectedWorkplaceId]);
 
   useEffect(() => {
-    if (!initialBooking?.resume || !selected || resumeAttempted.current) return;
+    if (!initialBooking?.resume || !initialSlot.canResume || !selected || resumeAttempted.current) return;
     resumeAttempted.current = true;
     void submitBooking();
-  }, [initialBooking?.resume, selected, submitBooking]);
+  }, [initialBooking?.resume, initialSlot.canResume, selected, submitBooking]);
 
   const toggleFavorite = async () => {
     if (!selected) return;
@@ -228,8 +254,8 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
       <section className="border-b border-[#E4E7EC] bg-white">
         <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-end gap-3 px-5 py-3 sm:px-8 lg:px-16">
           <SelectFilter icon={Building2} label="Корпус" onChange={(value) => { setBuilding(value); setFloor(""); }} options={buildings} placeholder="Все корпуса" value={building} />
-          <DatePicker min={localDate()} onChange={setSelectedDate} value={selectedDate} />
-          <TimePicker onChange={setSelectedTime} value={selectedTime} />
+          <DatePicker min={nextAvailableSlot.date} onChange={(date) => { setSelectedDate(date); if (!isFutureSlot(date, selectedTime, clock)) setSelectedTime(nextAvailableSlot.time); }} value={selectedDate} />
+          <TimePicker date={selectedDate} onChange={setSelectedTime} value={selectedTime} />
           <div className="ml-auto flex items-center gap-2">
             <div className="flex rounded-[10px] bg-[#F0F2F5] p-1">
               <button aria-label="2D-карта" aria-pressed={view === "map"} className={cn("flex size-9 items-center justify-center rounded-lg", view === "map" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("map")} type="button"><MapIcon className="size-4" /></button>
@@ -293,6 +319,7 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
           onWorkplace={(id) => { setSelectedWorkplaceId(id); setBookingMessage(""); }}
           selected={selected}
           selectedDate={selectedDate}
+          selectedSlotIsPast={selectedSlotIsPast}
           selectedTime={selectedTime}
           selectedWorkplaceId={selectedWorkplaceId}
         />
@@ -613,12 +640,12 @@ function WorkplacePlan({ space, selectedId, onSelect }: { space: Space; selected
 
 function getSpaceImages(space: Space): string[] {
   if (space.images.length > 0) return space.images;
-  return [space.image_url ?? "/images/spaces/a-101.jpg"];
+  return [space.image_url ?? "/images/spaces/a-101.webp"];
 }
 
 function getSpaceImageUrl(space: Space): string {
   const images = getSpaceImages(space);
-  return images[0] || (space.image_url ?? "/images/spaces/a-101.jpg");
+  return images[0] || (space.image_url ?? "/images/spaces/a-101.webp");
 }
 
 function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
@@ -1056,26 +1083,40 @@ function SpaceItem({ space, selected, onSelect }: { space: Space; selected: bool
   );
 }
 
-function SpaceDetails({ selected, selectedWorkplaceId, onWorkplace, selectedDate, selectedTime, favorite, onFavorite, onBook, bookingPending, bookingMessage }: { selected: Space | null; selectedWorkplaceId: string; onWorkplace: (id: string) => void; selectedDate: string; selectedTime: string; favorite: boolean; onFavorite: () => void; onBook: () => void; bookingPending: boolean; bookingMessage: string }) {
+function reviewCountLabel(value: number) {
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return `${value} отзывов`;
+  if (last === 1) return `${value} отзыв`;
+  if (last >= 2 && last <= 4) return `${value} отзыва`;
+  return `${value} отзывов`;
+}
+
+function SpaceDetails({ selected, selectedWorkplaceId, onWorkplace, selectedDate, selectedTime, selectedSlotIsPast, favorite, onFavorite, onBook, bookingPending, bookingMessage }: { selected: Space | null; selectedWorkplaceId: string; onWorkplace: (id: string) => void; selectedDate: string; selectedTime: string; selectedSlotIsPast: boolean; favorite: boolean; onFavorite: () => void; onBook: () => void; bookingPending: boolean; bookingMessage: string }) {
+  const [reviewsOpen, setReviewsOpen] = useState(false);
+  useEffect(() => { setReviewsOpen(false); }, [selected?.id]);
   if (!selected) return <aside className="rounded-[18px] border border-[#E1E5EA] bg-white p-6 text-center text-sm text-[#667085]">Выберите пространство, чтобы посмотреть детали.</aside>;
   const selectedWorkplace = selected.workplaces.find((item) => item.id === selectedWorkplaceId);
   return (
+    <>
     <aside className="min-w-0 self-start overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white xl:sticky xl:top-4">
       <SpacePreview key={selected.id} space={selected} selectedId={selectedWorkplaceId} onSelect={onWorkplace} />
       <div className="p-5">
-        <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand">{spaceTypeLabel(selected.space_type)}</p><h2 className="mt-1 text-xl font-bold text-ink">{selected.name}</h2></div>{selected.rating_average !== null && <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF7E8] px-2.5 py-1 text-xs font-bold text-[#B57700]"><Star className="size-3 fill-current" />{selected.rating_average}</span>}</div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand">{spaceTypeLabel(selected.space_type)}</p><h2 className="mt-1 text-xl font-bold text-ink">{selected.name}</h2></div><button aria-label={`Открыть отзывы: ${selected.rating_average !== null ? `оценка ${selected.rating_average}, ${reviewCountLabel(selected.review_count)}` : "отзывов пока нет"}`} className="group shrink-0 rounded-lg border border-[#EAECF0] bg-white px-2.5 py-1.5 text-left transition hover:border-[#D0D5DD] hover:bg-[#F8F9FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20" onClick={() => setReviewsOpen(true)} type="button"><span className="flex items-center justify-center gap-1 text-[11px] font-bold text-[#475467]"><Star className={cn("size-3.5 transition-transform group-hover:scale-110", selected.rating_average !== null ? "fill-current text-[#D89A22]" : "text-[#98A2B3]")} />{selected.rating_average?.toFixed(1) ?? "—"}</span><span className="mt-0.5 block text-[8px] font-medium text-[#98A2B3]">{selected.review_count ? reviewCountLabel(selected.review_count) : "Нет отзывов"}</span></button></div>
         <p className="mt-1 text-[11px] text-[#667085]">Корпус {selected.building_code} · {selected.floor_number} этаж</p>
         {selected.description && <p className="mt-3 text-xs leading-5 text-[#667085]">{selected.description}</p>}
         <div className="mt-4 flex flex-wrap gap-2"><Feature icon={Users} label={`${selected.capacity} мест`} />{selected.amenities.slice(0, 3).map((amenity) => <Feature icon={amenity.toLowerCase().includes("проектор") ? Projector : Monitor} key={amenity} label={amenity} />)}</div>
 
         {selected.workplaces.length > 0 && <><div className="my-5 h-px bg-[#E7E9EE]" /><h3 className="text-xs font-bold text-ink">Выберите рабочее место</h3><div className="mt-3 grid grid-cols-3 gap-2">{selected.workplaces.map((workplace) => <button aria-pressed={selectedWorkplaceId === workplace.id && workplace.is_available} className={cn("h-9 rounded-lg border text-[10px] font-semibold", !workplace.is_available && "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]", workplace.is_available && selectedWorkplaceId !== workplace.id && "border-[#DFE3E9] text-[#475467] hover:border-brand", selectedWorkplaceId === workplace.id && workplace.is_available && "border-brand bg-brand text-white")} disabled={!workplace.is_available} key={workplace.id} onClick={() => onWorkplace(workplace.id)} type="button">{workplace.code}</button>)}</div></>}
 
-        <div className="mt-5 rounded-xl bg-[#F5F6FF] p-3"><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Ваша бронь</p><p className="mt-1.5 text-xs font-bold text-ink">{selectedDate} · {selectedTime}</p><p className="mt-1 text-[10px] text-[#667085]">{selectedWorkplace ? `${selectedWorkplace.code} · ` : ""}{selected.name} · 30 минут</p></div>
+        <div className={cn("mt-5 rounded-xl p-3", selectedSlotIsPast ? "bg-[#FFF1F3]" : "bg-[#F5F6FF]")}><p className={cn("text-[9px] font-semibold uppercase tracking-[0.08em]", selectedSlotIsPast ? "text-[#C83E52]" : "text-[#667085]")}>Ваша бронь</p><p className="mt-1.5 text-xs font-bold text-ink">{selectedDate} · {selectedTime}</p><p className="mt-1 text-[10px] text-[#667085]">{selectedSlotIsPast ? "Это время уже прошло" : `${selectedWorkplace ? `${selectedWorkplace.code} · ` : ""}${selected.name} · 30 минут`}</p></div>
         {bookingMessage && <p className={cn("mt-3 rounded-xl px-3 py-2.5 text-xs font-medium", bookingMessage.includes("подтверждено") || bookingMessage.includes("отправлена") ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#FFF1F3] text-[#C83E52]")} role="status">{bookingMessage}</p>}
-        <Button className="mt-4 h-[42px] min-w-0" disabled={!selected.is_available || bookingPending || (selected.workplaces.length > 0 && !selectedWorkplace?.is_available)} fullWidth onClick={onBook}>{bookingPending ? "Проверяем доступ…" : selected.requires_approval ? "Отправить заявку" : "Забронировать"}</Button>
+        <Button className="mt-4 h-[42px] min-w-0" disabled={selectedSlotIsPast || !selected.is_available || bookingPending || (selected.workplaces.length > 0 && !selectedWorkplace?.is_available)} fullWidth onClick={onBook}>{bookingPending ? "Проверяем доступ…" : selected.requires_approval ? "Отправить заявку" : "Забронировать"}</Button>
         <Button aria-pressed={favorite} className="mt-2 h-[42px] min-w-0 gap-2" fullWidth onClick={onFavorite} variant="secondary"><Heart className={cn("size-4", favorite && "fill-brand")} />{favorite ? "В избранном" : "Добавить в избранное"}</Button>
       </div>
     </aside>
+    {reviewsOpen && <SpaceReviewsDialog onClose={() => setReviewsOpen(false)} space={selected} />}
+    </>
   );
 }
 

@@ -1,13 +1,13 @@
 "use client";
 
-import { BellRing, KeyRound, LogOut, UserRound } from "lucide-react";
+import { BellRing, Camera, KeyRound, LogOut, Trash2, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import { AuthField } from "@/components/auth/auth-field";
 import { Button } from "@/components/ui";
 import { useApiData } from "@/hooks/use-api-data";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, mediaUrl } from "@/lib/api";
 import { formatRole, initials } from "@/lib/format";
 import type { User } from "@/lib/types";
 import { validateFullName, validatePassword } from "@/lib/validation";
@@ -32,6 +32,11 @@ export default function SettingsPage() {
   const [settingsError, setSettingsError] = useState("");
   const [settingsMessage, setSettingsMessage] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
   const [passwordError, setPasswordError] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
@@ -42,12 +47,67 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user.data) return;
     setFullName(user.data.full_name);
+    setAvatarUrl(user.data.avatar_url);
     setPreferences({
       notify_booking_status: user.data.notify_booking_status,
       notify_booking_reminder: user.data.notify_booking_reminder,
       notify_booking_cancellation: user.data.notify_booking_cancellation,
     });
   }, [user.data]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  async function uploadAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setAvatarError("Выберите изображение JPEG, PNG или WebP");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Размер изображения не должен превышать 5 МБ");
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setAvatarPreview(preview);
+    setAvatarError("");
+    setUploadingAvatar(true);
+    try {
+      const updatedUser = await apiRequest<User>("/auth/me/avatar", {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      setAvatarUrl(updatedUser.avatar_url);
+      window.dispatchEvent(new Event("profile-updated"));
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : "Не удалось загрузить изображение");
+    } finally {
+      setUploadingAvatar(false);
+      setAvatarPreview(null);
+    }
+  }
+
+  async function deleteAvatar() {
+    if (uploadingAvatar) return;
+    setUploadingAvatar(true);
+    setAvatarError("");
+    try {
+      const updatedUser = await apiRequest<User>("/auth/me/avatar", { method: "DELETE" });
+      setAvatarUrl(updatedUser.avatar_url);
+      window.dispatchEvent(new Event("profile-updated"));
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : "Не удалось удалить изображение");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -154,13 +214,20 @@ export default function SettingsPage() {
 
       <form className="mt-8 space-y-6" onSubmit={saveSettings}>
         <SettingsCard icon={UserRound} title="Профиль" description="Основная информация вашего аккаунта.">
-          <div className="grid gap-5 sm:grid-cols-[auto_1fr_1fr] sm:items-end">
-            <div className="flex size-[74px] items-center justify-center rounded-full bg-[#EEF0FF] text-xl font-bold text-brand">
-              {initials(user.data.full_name)}
+          <div className="grid gap-5 sm:grid-cols-[140px_1fr_1fr] sm:items-end">
+            <div>
+              <div className="group relative size-[82px] overflow-hidden rounded-full bg-[#EEF0FF] text-xl font-bold text-brand ring-4 ring-white shadow-[0_4px_16px_rgba(51,70,200,0.12)]">
+                <div className="flex size-full items-center justify-center">{avatarPreview || avatarUrl ? <img alt="Аватар профиля" className="size-full object-cover" src={avatarPreview ?? mediaUrl(avatarUrl) ?? undefined} /> : initials(user.data.full_name)}</div>
+                <button aria-label="Выбрать аватар" className="absolute inset-0 flex items-center justify-center bg-[#101828]/55 text-white opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100" disabled={uploadingAvatar} onClick={() => avatarInputRef.current?.click()} type="button"><Camera className="size-5" /></button>
+                {uploadingAvatar && <span className="absolute inset-0 flex items-center justify-center bg-white/75 text-[10px] font-bold text-brand">Загрузка…</span>}
+              </div>
+              <input accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} ref={avatarInputRef} type="file" />
+              {avatarUrl && <button aria-label="Удалить аватар" className="mt-2 text-[#98A2B3] transition hover:text-[#D92D20]" disabled={uploadingAvatar} onClick={deleteAvatar} type="button"><Trash2 className="size-3.5" /></button>}
             </div>
             <AuthField autoComplete="name" id="settings-full-name" label="Имя и фамилия" onChange={(event) => { setFullName(event.target.value); setSettingsError(""); setSettingsMessage(""); }} value={fullName} />
             <ReadonlyField label="Электронная почта" value={user.data.email} />
           </div>
+          {avatarError && <p className="mt-3 text-xs font-medium text-[#D94A5C]" role="alert">{avatarError}</p>}
           <div className="mt-5 sm:max-w-[calc(50%_-_10px)]">
             <ReadonlyField label="Роль" value={formatRole(user.data.role)} />
           </div>

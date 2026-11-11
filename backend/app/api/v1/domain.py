@@ -28,6 +28,32 @@ router = APIRouter()
 ACTIVE_BOOKING_STATUSES = {"pending", "confirmed"}
 
 
+def active_booking_overlap_conditions(starts_at: datetime, ends_at: datetime) -> list[object]:
+    return [
+        Booking.status.in_(ACTIVE_BOOKING_STATUSES),
+        Booking.starts_at < ends_at,
+        Booking.ends_at > starts_at,
+    ]
+
+
+async def user_has_overlapping_booking(
+    db: AsyncSession,
+    user_id: UUID,
+    starts_at: datetime,
+    ends_at: datetime,
+) -> bool:
+    return (
+        await db.scalar(
+            select(Booking.id)
+            .where(
+                Booking.user_id == user_id,
+                *active_booking_overlap_conditions(starts_at, ends_at),
+            )
+            .limit(1)
+        )
+    ) is not None
+
+
 def space_options() -> tuple[Load, ...]:
     return (
         selectinload(Space.floor).selectinload(Floor.building),
@@ -220,6 +246,12 @@ async def create_booking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> BookingResponse:
+    if payload.starts_at <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Нельзя забронировать прошедшие дату и время",
+        )
+
     space: Space | None = None
     workplace: Workplace | None = None
     if payload.space_id is not None:
@@ -234,11 +266,21 @@ async def create_booking(
     if space is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking target not found")
 
-    overlap_conditions = [
-        Booking.status.in_(ACTIVE_BOOKING_STATUSES),
-        Booking.starts_at < payload.ends_at,
-        Booking.ends_at > payload.starts_at,
-    ]
+    # Serialize booking attempts from the same user so two concurrent requests
+    # cannot both pass the overlap check.
+    await db.execute(select(User.id).where(User.id == current_user.id).with_for_update())
+    if await user_has_overlapping_booking(
+        db,
+        current_user.id,
+        payload.starts_at,
+        payload.ends_at,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="На это время у вас уже есть бронь компьютера или аудитории",
+        )
+
+    overlap_conditions = active_booking_overlap_conditions(payload.starts_at, payload.ends_at)
     if workplace is not None:
         overlap_conditions.append(Booking.workplace_id == workplace.id)
     else:
@@ -358,12 +400,16 @@ def review_collection(reviews: list[Review]) -> ReviewCollection:
 @router.get("/reviews", response_model=ReviewCollection)
 async def public_reviews(
     limit: int = Query(default=20, ge=1, le=100),
+    space_id: UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> ReviewCollection:
+    filters = [Review.is_published.is_(True)]
+    if space_id is not None:
+        filters.append(Review.space_id == space_id)
     reviews = (
         await db.scalars(
             select(Review)
-            .where(Review.is_published.is_(True))
+            .where(*filters)
             .options(*review_options())
             .order_by(Review.created_at.desc())
             .limit(limit)

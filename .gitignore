@@ -11,6 +11,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 backend/.venv/
+backend/uploads/
 
 # Node
 node_modules/

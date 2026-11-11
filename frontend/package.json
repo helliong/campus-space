@@ -6,6 +6,7 @@
     "dev": "next dev",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
+    "images:convert": "node scripts/convert-space-images.cjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

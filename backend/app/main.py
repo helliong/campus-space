@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+import mimetypes
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.media import UPLOAD_DIRECTORY
 from app.db.base import Base
 from app.db.catalog import ensure_campus_catalog
 from app.db.session import async_session_factory, engine
@@ -23,6 +26,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+mimetypes.add_type("image/webp", ".webp")
+
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIRECTORY)), name="uploads")
 
 
 @app.get("/health", tags=["system"])
