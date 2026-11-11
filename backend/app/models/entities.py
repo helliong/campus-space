@@ -32,6 +32,16 @@ class User(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32))
     avatar_url: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    auth_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    notify_booking_status: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    notify_booking_reminder: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    notify_booking_cancellation: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
 
     bookings: Mapped[list[Booking]] = relationship(back_populates="user")
     favorites: Mapped[list[Favorite]] = relationship(back_populates="user", cascade="all, delete-orphan")

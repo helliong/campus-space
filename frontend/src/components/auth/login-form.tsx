@@ -7,7 +7,7 @@ import { useState, type FocusEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
 import { getSafeRedirectPath } from "@/lib/auth";
-import { validatePassword, validateUniversityEmail } from "@/lib/validation";
+import { validateEmail, validatePassword } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
 import { SsoSection } from "./auth-card";
@@ -15,7 +15,7 @@ import { SsoSection } from "./auth-card";
 type LoginValues = { email: string; password: string };
 type LoginErrors = Partial<Record<keyof LoginValues, string>>;
 
-const validators = { email: validateUniversityEmail, password: validatePassword };
+const validators = { email: validateEmail, password: validatePassword };
 type AuthResponse = { access_token: string };
 
 export function LoginForm({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
@@ -39,7 +39,7 @@ export function LoginForm({ redirectTo = "/dashboard" }: { redirectTo?: string }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors: LoginErrors = {
-      email: validateUniversityEmail(values.email),
+      email: validateEmail(values.email),
       password: validatePassword(values.password),
     };
     setErrors(nextErrors);
@@ -58,7 +58,7 @@ export function LoginForm({ redirectTo = "/dashboard" }: { redirectTo?: string }
     <>
       <form className="mt-10" noValidate onSubmit={submit}>
         <div className="space-y-4">
-          <AuthField autoComplete="email" error={errors.email} id="email" label="Университетская почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@university.ru" type="email" value={values.email} />
+          <AuthField autoComplete="email" error={errors.email} id="email" label="Электронная почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@example.com" type="email" value={values.email} />
           <AuthField autoComplete="current-password" error={errors.password} id="password" label="Пароль" name="password" onBlur={blur("password")} onChange={(event) => update("password", event.target.value)} placeholder="Введите пароль" type="password" value={values.password} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-4">

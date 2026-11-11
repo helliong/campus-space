@@ -8,7 +8,7 @@ import { useState, type FocusEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
 import { getSafeRedirectPath } from "@/lib/auth";
-import { validateFullName, validatePassword, validateUniversityEmail } from "@/lib/validation";
+import { validateEmail, validateFullName, validatePassword } from "@/lib/validation";
 
 import { AuthField } from "./auth-field";
 import { SsoSection } from "./auth-card";
@@ -16,7 +16,7 @@ import { SsoSection } from "./auth-card";
 type RegisterValues = { fullName: string; email: string; password: string; role: string; terms: boolean };
 type Field = "fullName" | "email" | "password";
 type RegisterErrors = Partial<Record<keyof RegisterValues, string>>;
-const validators = { fullName: validateFullName, email: validateUniversityEmail, password: validatePassword };
+const validators = { fullName: validateFullName, email: validateEmail, password: validatePassword };
 type AuthResponse = { access_token: string };
 
 export function RegisterForm({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
@@ -38,7 +38,7 @@ export function RegisterForm({ redirectTo = "/dashboard" }: { redirectTo?: strin
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors: RegisterErrors = {
-      fullName: validateFullName(values.fullName), email: validateUniversityEmail(values.email), password: validatePassword(values.password), terms: values.terms ? "" : "Необходимо принять правила и политику конфиденциальности",
+      fullName: validateFullName(values.fullName), email: validateEmail(values.email), password: validatePassword(values.password), terms: values.terms ? "" : "Необходимо принять правила и политику конфиденциальности",
     };
     setErrors(nextErrors);
     if (Object.values(nextErrors).some(Boolean)) return;
@@ -60,7 +60,7 @@ export function RegisterForm({ redirectTo = "/dashboard" }: { redirectTo?: strin
       <form className="mt-8" noValidate onSubmit={submit}>
         <div className="space-y-4">
           <AuthField autoComplete="name" error={errors.fullName} id="full-name" label="Имя и фамилия" name="fullName" onBlur={blur("fullName")} onChange={(event) => update("fullName", event.target.value)} placeholder="Имя Фамилия" value={values.fullName} />
-          <AuthField autoComplete="email" error={errors.email} id="email" label="Университетская почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@university.ru" type="email" value={values.email} />
+          <AuthField autoComplete="email" error={errors.email} id="email" label="Электронная почта" name="email" onBlur={blur("email")} onChange={(event) => update("email", event.target.value)} placeholder="name@example.com" type="email" value={values.email} />
           <AuthField autoComplete="new-password" error={errors.password} id="password" label="Пароль" name="password" onBlur={blur("password")} onChange={(event) => update("password", event.target.value)} placeholder="Не менее 8 символов" type="password" value={values.password} />
           <label className="block text-xs font-semibold text-ink" htmlFor="role">Роль<SelectField aria-label="Роль" className="mt-2 h-[50px] text-sm" id="role" name="role" onChange={(role) => setValues((current) => ({ ...current, role }))} value={values.role} options={[{ value: "student", label: "Студент" }, { value: "teacher", label: "Преподаватель" }]} /></label>
         </div>

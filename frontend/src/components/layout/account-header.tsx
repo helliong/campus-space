@@ -22,10 +22,11 @@ const navigation = [
 ] as const;
 
 export function AccountHeader({ active }: AccountHeaderProps) {
-  const { data: user } = useApiData<User>("/auth/me", true);
+  const { data: user, reload: reloadUser } = useApiData<User>("/auth/me", true);
   const router = useRouter();
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -37,15 +38,33 @@ export function AccountHeader({ active }: AccountHeaderProps) {
   }
 
   function scheduleProfileMenu() {
+    cancelCloseTimer();
     if (isProfileMenuOpen || openTimerRef.current) return;
     openTimerRef.current = setTimeout(() => {
       setIsProfileMenuOpen(true);
       openTimerRef.current = null;
-    }, 500);
+    }, 350);
+  }
+
+  function cancelCloseTimer() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function scheduleCloseProfileMenu() {
+    cancelOpenTimer();
+    if (closeTimerRef.current) return;
+    closeTimerRef.current = setTimeout(() => {
+      setIsProfileMenuOpen(false);
+      closeTimerRef.current = null;
+    }, 200);
   }
 
   function closeProfileMenu() {
     cancelOpenTimer();
+    cancelCloseTimer();
     setIsProfileMenuOpen(false);
   }
 
@@ -69,8 +88,14 @@ export function AccountHeader({ active }: AccountHeaderProps) {
   useEffect(() => {
     return () => {
       if (openTimerRef.current) clearTimeout(openTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("profile-updated", reloadUser);
+    return () => window.removeEventListener("profile-updated", reloadUser);
+  }, [reloadUser]);
 
   useEffect(() => {
     if (!isProfileMenuOpen) return;
@@ -79,6 +104,10 @@ export function AccountHeader({ active }: AccountHeaderProps) {
       if (openTimerRef.current) {
         clearTimeout(openTimerRef.current);
         openTimerRef.current = null;
+      }
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
       }
       setIsProfileMenuOpen(false);
     }
@@ -130,10 +159,11 @@ export function AccountHeader({ active }: AccountHeaderProps) {
             }}
             onFocus={() => {
               cancelOpenTimer();
+              cancelCloseTimer();
               setIsProfileMenuOpen(true);
             }}
             onMouseEnter={scheduleProfileMenu}
-            onMouseLeave={closeProfileMenu}
+            onMouseLeave={scheduleCloseProfileMenu}
             ref={profileMenuRef}
           >
             <button
@@ -143,6 +173,7 @@ export function AccountHeader({ active }: AccountHeaderProps) {
               className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
               onClick={() => {
                 cancelOpenTimer();
+                cancelCloseTimer();
                 setIsProfileMenuOpen(true);
               }}
               type="button"
@@ -157,7 +188,7 @@ export function AccountHeader({ active }: AccountHeaderProps) {
             {isProfileMenuOpen ? (
               <div
                 aria-label="Меню профиля"
-                className="absolute right-0 top-[calc(100%+12px)] z-50 w-[220px] rounded-[14px] border border-[#E4E7EC] bg-white p-2 shadow-[0_14px_36px_rgba(16,24,40,0.14)]"
+                className="absolute right-0 top-[calc(100%+12px)] z-50 w-[220px] rounded-[14px] border border-[#E4E7EC] bg-white p-2 shadow-[0_14px_36px_rgba(16,24,40,0.14)] before:absolute before:-top-3 before:left-0 before:h-3 before:w-full before:content-['']"
                 role="menu"
               >
                 <Link

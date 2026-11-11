@@ -3,14 +3,19 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.rate_limit import rate_limit
+from app.core.rate_limit import (
+    check_login_rate_limit,
+    clear_failed_logins,
+    rate_limit,
+    record_failed_login,
+)
 from app.core.security import (
     create_token,
     decode_token,
@@ -21,7 +26,15 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.entities import RefreshToken, User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+    UserSettingsUpdate,
+)
 
 router = APIRouter()
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -45,17 +58,25 @@ async def get_current_user(
     try:
         payload = decode_token(credentials.credentials, "access")
         user_id = UUID(payload["sub"])
-    except (ValueError, KeyError):
+        token_version = int(payload.get("ver", 0))
+    except (ValueError, KeyError, TypeError):
         raise credentials_error() from None
     user = await db.get(User, user_id)
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+        or token_version != user.auth_version
+    ):
         raise credentials_error()
     return user
 
 
 async def issue_tokens(db: AsyncSession, user: User) -> tuple[str, datetime]:
     refresh_token, token_id, refresh_expires_at = create_token(
-        str(user.id), "refresh", timedelta(days=settings.refresh_token_expire_days)
+        str(user.id),
+        "refresh",
+        timedelta(days=settings.refresh_token_expire_days),
+        {"ver": user.auth_version},
     )
     db.add(
         RefreshToken(
@@ -70,7 +91,10 @@ async def issue_tokens(db: AsyncSession, user: User) -> tuple[str, datetime]:
 
 def access_token_for(user: User) -> str:
     token, _, _ = create_token(
-        str(user.id), "access", timedelta(minutes=settings.access_token_expire_minutes)
+        str(user.id),
+        "access",
+        timedelta(minutes=settings.access_token_expire_minutes),
+        {"ver": user.auth_version},
     )
     return token
 
@@ -85,6 +109,14 @@ def set_refresh_cookie(response: Response, refresh_token: str, expires_at: datet
         secure=settings.cookie_secure,
         samesite="lax",
         path="/",
+    )
+
+
+async def revoke_user_refresh_tokens(db: AsyncSession, user_id: UUID) -> None:
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
     )
 
 
@@ -112,11 +144,19 @@ async def register(payload: RegisterRequest, response: Response, db: AsyncSessio
     return token_response(user)
 
 
-@router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit("login", 5, 900))])
-async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    rate_limit_key = await check_login_rate_limit(request, payload.email, limit=5)
     user = await db.scalar(select(User).where(User.email == payload.email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        await record_failed_login(rate_limit_key, window_seconds=900)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    await clear_failed_logins(rate_limit_key)
     refresh_token, refresh_expires_at = await issue_tokens(db, user)
     await db.commit()
     set_refresh_cookie(response, refresh_token, refresh_expires_at)
@@ -137,7 +177,8 @@ async def refresh(
         token_payload = decode_token(refresh_token, "refresh")
         token_id = token_payload["jti"]
         user_id = UUID(token_payload["sub"])
-    except (ValueError, KeyError):
+        token_version = int(token_payload.get("ver", 0))
+    except (ValueError, KeyError, TypeError):
         raise credentials_error() from None
     stored_token = await db.scalar(select(RefreshToken).where(RefreshToken.token_id == token_id))
     if (
@@ -149,7 +190,11 @@ async def refresh(
     ):
         raise credentials_error()
     user = await db.get(User, user_id)
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+        or token_version != user.auth_version
+    ):
         raise credentials_error()
     stored_token.revoked_at = datetime.now(UTC)
     new_refresh_token, refresh_expires_at = await issue_tokens(db, user)
@@ -182,3 +227,60 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(
+    payload: UserSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    for field, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
+        setattr(current_user, field, value)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.post(
+    "/change-password",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit("change-password", 10, 900))],
+)
+async def change_password(
+    payload: ChangePasswordRequest,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Текущий пароль указан неверно",
+        )
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Новый пароль должен отличаться от текущего",
+        )
+
+    current_user.password_hash = hash_password(payload.new_password)
+    current_user.auth_version += 1
+    await revoke_user_refresh_tokens(db, current_user.id)
+    refresh_token, refresh_expires_at = await issue_tokens(db, current_user)
+    await db.commit()
+    set_refresh_cookie(response, refresh_token, refresh_expires_at)
+    return token_response(current_user)
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    current_user.auth_version += 1
+    await revoke_user_refresh_tokens(db, current_user.id)
+    await db.commit()
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/")
+    return response

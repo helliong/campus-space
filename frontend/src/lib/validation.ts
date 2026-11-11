@@ -8,11 +8,10 @@ export function validateFullName(value: string) {
   return "";
 }
 
-export function validateUniversityEmail(value: string) {
+export function validateEmail(value: string) {
   const email = value.trim().toLowerCase();
-  if (!email) return "Укажите университетскую почту";
+  if (!email) return "Укажите электронную почту";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Введите корректный адрес почты";
-  if (!email.endsWith("@university.ru")) return "Используйте почту в домене @university.ru";
   return "";
 }
 

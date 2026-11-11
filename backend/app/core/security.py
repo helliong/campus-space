@@ -25,11 +25,18 @@ def verify_password(password: str, password_hash: str) -> bool:
     return password_hasher.verify(password, password_hash)
 
 
-def create_token(subject: str, token_type: str, expires_delta: timedelta) -> tuple[str, str, datetime]:
+def create_token(
+    subject: str,
+    token_type: str,
+    expires_delta: timedelta,
+    extra_claims: dict[str, Any] | None = None,
+) -> tuple[str, str, datetime]:
     now = datetime.now(UTC)
     expires_at = now + expires_delta
     token_id = str(uuid4())
     payload = {"sub": subject, "type": token_type, "jti": token_id, "iat": now, "exp": expires_at}
+    if extra_claims:
+        payload.update(extra_claims)
     token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return token, token_id, expires_at
 

@@ -7,6 +7,9 @@ export type User = {
   group_name: string | null;
   phone: string | null;
   avatar_url: string | null;
+  notify_booking_status: boolean;
+  notify_booking_reminder: boolean;
+  notify_booking_cancellation: boolean;
   created_at: string;
 };
 

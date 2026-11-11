@@ -21,7 +21,7 @@ export const metadata = {
 const dataCategories = [
   {
     title: "Учетные данные",
-    description: "Фамилия, имя, академическая роль (студент/преподаватель) и корпоративный адрес почты @university.ru.",
+    description: "Фамилия, имя, академическая роль (студент/преподаватель) и адрес электронной почты.",
     icon: UserCheck,
   },
   {
