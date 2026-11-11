@@ -27,6 +27,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 12,
         "map_y": 18,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ("wifi", "projector", "whiteboard"),
     },
     {
@@ -40,6 +41,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 36,
         "map_y": 18,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ("wifi", "whiteboard"),
     },
     {
@@ -53,6 +55,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": True,
         "map_x": 62,
         "map_y": 18,
+        "image_url": "/images/spaces/l-305.jpg",
         "amenities": ("wifi", "projector", "whiteboard", "computers"),
     },
     {
@@ -66,6 +69,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 12,
         "map_y": 55,
+        "image_url": "/images/spaces/k-104.jpg",
         "amenities": ("wifi", "computers"),
     },
     {
@@ -79,6 +83,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 38,
         "map_y": 55,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ("wifi", "projector"),
     },
     {
@@ -92,6 +97,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 64,
         "map_y": 55,
+        "image_url": "/images/spaces/p-1.jpg",
         "amenities": ("wifi", "display", "video-conference"),
     },
     {
@@ -106,6 +112,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 55,
         "map_y": 6,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -120,6 +127,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 5,
         "map_y": 6,
+        "image_url": "/images/spaces/k-104.jpg",
         "amenities": ('wifi', 'computers'),
     },
     {
@@ -134,6 +142,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 5,
         "map_y": 60,
+        "image_url": "/images/spaces/p-1.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -148,6 +157,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 55,
         "map_y": 60,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -162,6 +172,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 3,
         "map_y": 6,
+        "image_url": "/images/spaces/k-104.jpg",
         "amenities": ('wifi', 'computers'),
     },
     {
@@ -176,6 +187,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": True,
         "map_x": 3,
         "map_y": 57,
+        "image_url": "/images/spaces/l-305.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -190,6 +202,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 59,
         "map_y": 6,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -204,6 +217,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 59,
         "map_y": 57,
+        "image_url": "/images/spaces/a-101.jpg",
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
 
@@ -218,37 +232,41 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
         building = Building(
             id=catalog_id("building-a"),
             code="A",
-            name="Учебный корпус А",
-            address="Главный кампус",
+            name="Главный учебный корпус",
+            address="Университетский проспект, 1",
         )
         db.add(building)
-    else:
-        building.name = "Учебный корпус А"
-        building.address = "Главный кампус"
-    await db.flush()
+        await db.flush()
 
+    floors = (
+        (1, "1 этаж", "Коворкинг, переговорные и учебные аудитории первого этажа"),
+        (2, "2 этаж", "Аудитории, лаборатории и коворкинг второго этажа"),
+        (3, "3 этаж", "Проектные лаборатории и специализированные аудитории"),
+    )
     floor_by_number: dict[int, Floor] = {}
-    for number in range(1, 5):
+    for number, title, description in floors:
         floor = await db.scalar(
             select(Floor).where(Floor.building_id == building.id, Floor.number == number)
         )
         if floor is None:
             floor = Floor(
-                id=catalog_id(f"building-a-floor-{number}"),
+                id=catalog_id(f"floor-a-{number}"),
                 building_id=building.id,
                 number=number,
+                title=title,
+                description=description,
             )
             db.add(floor)
+            await db.flush()
         floor_by_number[number] = floor
-    await db.flush()
 
     amenity_names = {
         "wifi": "Wi-Fi",
         "projector": "Проектор",
         "whiteboard": "Маркерная доска",
         "computers": "Компьютеры",
-        "display": "Большой экран",
-        "video-conference": "Видеоконференция",
+        "display": "ТВ-панель",
+        "video-conference": "Видеоконференцсвязь",
     }
     amenity_by_code: dict[str, Amenity] = {}
     for code, name in amenity_names.items():
@@ -256,6 +274,7 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
         if amenity is None:
             amenity = Amenity(id=catalog_id(f"amenity-{code}"), code=code, name=name)
             db.add(amenity)
+            await db.flush()
         else:
             amenity.name = name
         amenity_by_code[code] = amenity
@@ -283,6 +302,9 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
                 "map_y",
             )
         }
+        if "image_url" in definition:
+            values["image_url"] = definition["image_url"]
+
         if space is None:
             space = Space(
                 id=catalog_id(f"space-{definition['key']}"),

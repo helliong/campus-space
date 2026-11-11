@@ -568,15 +568,105 @@ function WorkplacePlan({ space, selectedId, onSelect }: { space: Space; selected
   );
 }
 
+const spaceImagesByCode: Record<string, string> = {
+  "К-104": "/images/spaces/k-104.jpg",
+  "К-214": "/images/spaces/k-104.jpg",
+  "К-304": "/images/spaces/k-104.jpg",
+  "А-101": "/images/spaces/a-101.jpg",
+  "А-108": "/images/spaces/a-101.jpg",
+  "А-201": "/images/spaces/a-101.jpg",
+  "А-202": "/images/spaces/a-101.jpg",
+  "А-208": "/images/spaces/a-101.jpg",
+  "А-301": "/images/spaces/a-101.jpg",
+  "А-308": "/images/spaces/a-101.jpg",
+  "П-1": "/images/spaces/p-1.jpg",
+  "П-2": "/images/spaces/p-1.jpg",
+  "Л-203": "/images/spaces/l-305.jpg",
+  "Л-305": "/images/spaces/l-305.jpg",
+};
+
+function getSpaceImageUrl(space: Space): string {
+  if (space.image_url) return space.image_url;
+  if (spaceImagesByCode[space.code]) return spaceImagesByCode[space.code];
+  if (space.space_type === "coworking") return "/images/spaces/k-104.jpg";
+  if (space.space_type === "laboratory") return "/images/spaces/l-305.jpg";
+  if (space.space_type === "meeting_room") return "/images/spaces/p-1.jpg";
+  return "/images/spaces/a-101.jpg";
+}
+
 function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
+  const [mode, setMode] = useState<"photo" | "scheme">("photo");
   const [imageFailed, setImageFailed] = useState(false);
-  if (space.image_url && !imageFailed) return <img alt={`Превью: ${space.name}`} className="h-48 w-full object-cover" onError={() => setImageFailed(true)} src={space.image_url} />;
+  const imageUrl = getSpaceImageUrl(space);
+  const selectedWorkplace = space.workplaces.find((item) => item.id === selectedId);
+  const showPhoto = mode === "photo" && !imageFailed;
+
   return (
-    <div className="bg-[#F5F6FF] p-4">
-      <p className="mb-3 text-[10px] font-semibold text-[#667085]">Схема помещения · {space.code}</p>
-      {space.workplaces.length > 0 ? <WorkplacePlan space={space} selectedId={selectedId} onSelect={onSelect} /> : (
-        <div aria-label={`Схема: ${space.name}`} className="relative mx-auto h-[213px] w-[190px] rounded-xl border border-[#D8DEE8] bg-[#E8F8F5]">
-          {space.space_type === "laboratory" ? <LabFurniture available={space.is_available} /> : space.space_type === "meeting_room" || space.capacity <= 6 ? <div className="absolute -left-12 top-12"><RoundTableFurniture available={space.is_available} /></div> : <ClassroomFurniture available={space.is_available} teacherDesk />}
+    <div className="relative overflow-hidden bg-[#F5F6FF]">
+      {showPhoto ? (
+        <div className="relative h-48 w-full overflow-hidden bg-[#EEF0FF]">
+          <img
+            alt={`Фотография: ${space.name}`}
+            className="size-full object-cover transition-transform duration-300 hover:scale-105"
+            onError={() => setImageFailed(true)}
+            src={imageUrl}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+          <div className="absolute bottom-2.5 left-3 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+              {space.code}
+            </span>
+            {selectedWorkplace && (
+              <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Выбрано: {selectedWorkplace.code}
+              </span>
+            )}
+          </div>
+          <div className="absolute right-2.5 top-2.5 flex rounded-lg bg-black/60 p-0.5 backdrop-blur-sm">
+            <button
+              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", showPhoto ? "bg-white text-ink shadow-sm" : "text-white/80 hover:text-white")}
+              onClick={() => setMode("photo")}
+              type="button"
+            >
+              Фото
+            </button>
+            <button
+              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", !showPhoto ? "bg-white text-ink shadow-sm" : "text-white/80 hover:text-white")}
+              onClick={() => setMode("scheme")}
+              type="button"
+            >
+              Схема
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[10px] font-semibold text-[#667085]">Схема помещения · {space.code}</p>
+            <div className="flex rounded-lg border border-[#E4E7EC] bg-white p-0.5 shadow-sm">
+              <button
+                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", mode === "photo" ? "bg-brand text-white" : "text-[#667085] hover:text-ink")}
+                onClick={() => setMode("photo")}
+                type="button"
+              >
+                Фото
+              </button>
+              <button
+                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", mode === "scheme" ? "bg-brand text-white" : "text-[#667085] hover:text-ink")}
+                onClick={() => setMode("scheme")}
+                type="button"
+              >
+                Схема
+              </button>
+            </div>
+          </div>
+          {space.workplaces.length > 0 ? (
+            <WorkplacePlan space={space} selectedId={selectedId} onSelect={onSelect} />
+          ) : (
+            <div aria-label={`Схема: ${space.name}`} className="relative mx-auto h-[213px] w-[190px] rounded-xl border border-[#D8DEE8] bg-[#E8F8F5]">
+              {space.space_type === "laboratory" ? <LabFurniture available={space.is_available} /> : space.space_type === "meeting_room" || space.capacity <= 6 ? <div className="absolute -left-12 top-12"><RoundTableFurniture available={space.is_available} /></div> : <ClassroomFurniture available={space.is_available} teacherDesk />}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -727,9 +817,15 @@ function MapLegend({ color, label }: { color: string; label: string }) {
 }
 
 function SpaceItem({ space, selected, onSelect }: { space: Space; selected: boolean; onSelect: () => void }) {
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const imageUrl = getSpaceImageUrl(space);
   return (
     <button className={cn("flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left transition hover:border-brand/40", selected ? "border-brand ring-1 ring-brand/20" : "border-[#E1E5EA]")} onClick={onSelect} type="button">
-      <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold", space.is_available ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#F2F4F7] text-[#667085]")}>{initialsFromCode(space.code)}</span>
+      {!thumbFailed && imageUrl ? (
+        <img alt="" className="size-11 shrink-0 rounded-xl object-cover" onError={() => setThumbFailed(true)} src={imageUrl} />
+      ) : (
+        <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold", space.is_available ? "bg-[#E8F8F5] text-[#168C7F]" : "bg-[#F2F4F7] text-[#667085]")}>{initialsFromCode(space.code)}</span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="flex items-start justify-between gap-3"><strong className="text-sm text-ink">{space.name}</strong><span className={cn("flex items-center gap-1 text-[9px] font-semibold", space.is_available ? "text-accent" : "text-[#98A2B3]")}><span className="size-1.5 rounded-full bg-current" />{space.is_available ? "Свободно" : "Занято"}</span></span>
         <span className="mt-1 block text-[11px] text-[#667085]">{spaceTypeLabel(space.space_type)} · {space.capacity} мест</span>
