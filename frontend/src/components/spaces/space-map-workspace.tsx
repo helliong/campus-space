@@ -11,6 +11,8 @@ import {
   MapPin,
   Maximize2,
   Monitor,
+  Minus,
+  Plus,
   Projector,
   RotateCcw,
   Star,
@@ -254,7 +256,10 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
             </label>
             <fieldset><legend className="mb-3 text-xs font-semibold text-ink">Тип помещения</legend><div className="space-y-2.5">{availableTypes.map((type) => <FilterCheckbox key={type} checked={types.includes(type)} label={spaceTypeLabel(type)} onChange={(checked) => setTypes((current) => checked ? [...current, type] : current.filter((item) => item !== type))} />)}</div></fieldset>
             <fieldset><legend className="text-xs font-semibold text-ink">Вместимость помещения</legend>
-              <div className="mt-3 grid grid-cols-2 gap-2">{([{ label: "От", value: minCapacity, change: setMinCapacity }, { label: "До", value: maxCapacity, change: setMaxCapacity }]).map(({ label, value, change }) => <label className="text-[10px] text-[#667085]" key={label}>{label}<input aria-invalid={invalidCapacity} aria-describedby={invalidCapacity ? "capacity-error" : undefined} className="mt-1 h-10 w-full min-w-0 rounded-lg border border-[#DFE3E9] px-2 text-xs text-ink outline-none focus:border-brand" min="1" step="1" inputMode="numeric" onChange={(event) => { const next = event.target.value; if (!next || /^\d+$/.test(next) && Number(next) >= 1) change(next); }} placeholder="Мест" type="number" value={value} /></label>)}</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <CapacityStepper describedBy={invalidCapacity ? "capacity-error" : undefined} invalid={invalidCapacity} label="От" onChange={setMinCapacity} value={minCapacity} />
+                <CapacityStepper describedBy={invalidCapacity ? "capacity-error" : undefined} invalid={invalidCapacity} label="До" onChange={setMaxCapacity} value={maxCapacity} />
+              </div>
               {invalidCapacity && <p className="mt-2 text-[10px] text-red-600" id="capacity-error">Значение «От» не должно превышать «До».</p>}
             </fieldset>
             <fieldset><legend className="mb-2 text-xs font-semibold text-ink">Оснащение</legend><p className="mb-3 text-[10px] leading-4 text-[#667085]">Все выбранные удобства</p><div className="space-y-2.5">{availableAmenities.map((amenity) => <FilterCheckbox key={amenity} checked={amenities.includes(amenity)} label={amenity} onChange={(checked) => setAmenities((current) => checked ? [...current, amenity] : current.filter((item) => item !== amenity))} />)}</div></fieldset>
@@ -300,6 +305,40 @@ function FilterCheckbox({ checked, label, onChange }: { checked: boolean; label:
   return <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-[#475467]"><input checked={checked} className="mt-0.5 size-4 shrink-0 accent-[#3346C8]" onChange={(event) => onChange(event.target.checked)} type="checkbox" /><span>{label}</span></label>;
 }
 
+function CapacityStepper({ label, value, invalid, describedBy, onChange }: { label: string; value: string; invalid: boolean; describedBy?: string; onChange: (value: string) => void }) {
+  const numberValue = Number(value || 0);
+  const labelId = `capacity-${label === "От" ? "from" : "to"}-label`;
+  const setStep = (direction: -1 | 1) => {
+    onChange(String(Math.max(1, (numberValue || (direction > 0 ? 0 : 2)) + direction)));
+  };
+
+  return (
+    <div className="min-w-0">
+      <span className="mb-1.5 block text-[10px] font-semibold text-[#667085]" id={labelId}>{label}</span>
+      <div className={cn("flex h-11 min-w-0 items-center rounded-[11px] border bg-white p-1 shadow-[0_1px_2px_rgba(16,24,40,0.03)] transition focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/10", invalid ? "border-[#FDA29B]" : "border-[#DDE2EA] hover:border-[#B8C0D0]")}>
+        <button aria-label={`Уменьшить значение «${label}»`} className="flex size-5 shrink-0 items-center justify-center rounded-md text-[#98A2B3] transition hover:bg-[#F2F4FF] hover:text-brand disabled:cursor-not-allowed disabled:opacity-35" disabled={!value || numberValue <= 1} onClick={() => setStep(-1)} type="button"><Minus className="size-3" strokeWidth={2.5} /></button>
+        <input
+          aria-describedby={describedBy}
+          aria-invalid={invalid}
+          aria-labelledby={labelId}
+          className="h-full min-w-0 flex-1 appearance-none bg-transparent px-0 text-center text-xs font-bold tabular-nums text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          inputMode="numeric"
+          min="1"
+          onChange={(event) => {
+            const next = event.target.value;
+            if (!next || /^\d+$/.test(next) && Number(next) >= 1) onChange(next);
+          }}
+          placeholder="—"
+          step="1"
+          type="number"
+          value={value}
+        />
+        <button aria-label={`Увеличить значение «${label}»`} className="flex size-5 shrink-0 items-center justify-center rounded-md bg-[#F2F4FF] text-brand transition hover:bg-brand hover:text-white" onClick={() => setStep(1)} type="button"><Plus className="size-3" strokeWidth={2.5} /></button>
+      </div>
+    </div>
+  );
+}
+
 function SelectFilter({ icon: Icon, label, value, options, placeholder, onChange }: { icon: typeof Building2; label: string; value: string; options: string[]; placeholder: string; onChange: (value: string) => void }) {
   return (
     <label className="min-w-[150px] flex-1 xl:max-w-[200px]">
@@ -327,6 +366,7 @@ function getFloorMapStatus(space: Space): FloorMapStatus {
 function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWorkplace }: { spaces: Space[]; selectedId: string; selectedWorkplaceId: string; onSelect: (space: Space) => void; onWorkplace: (space: Space, id: string) => void }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(766);
@@ -373,7 +413,11 @@ function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWo
 
         <div
           ref={viewport}
-          className="w-full overflow-hidden rounded-[16px] bg-[#F7F8FA]"
+          className={cn(
+            "w-full overflow-hidden rounded-[16px] bg-[#F7F8FA]",
+            zoom > 1 && "cursor-grab select-none",
+            isDragging && "cursor-grabbing",
+          )}
           style={{ height: 650 * scale, touchAction: zoom > 1 ? "none" : "pan-y" }}
           onPointerDown={(event) => {
             if (zoom <= 1 || event.button !== 0) return;
@@ -386,14 +430,18 @@ function FigmaFloorMap({ spaces, selectedId, selectedWorkplaceId, onSelect, onWo
             const dy = event.clientY - start.y;
             if (Math.abs(dx) + Math.abs(dy) > 5) {
               start.moved = true;
+              setIsDragging(true);
               event.currentTarget.setPointerCapture(event.pointerId);
               setPan({ x: start.panX + dx, y: start.panY + dy });
             }
           }}
-          onPointerCancel={() => { drag.current = null; }}
+          onPointerUp={() => { setIsDragging(false); }}
+          onPointerCancel={() => { drag.current = null; setIsDragging(false); }}
+          onLostPointerCapture={() => { setIsDragging(false); }}
           onClickCapture={(event) => {
             if (drag.current?.moved) { event.preventDefault(); event.stopPropagation(); }
             drag.current = null;
+            setIsDragging(false);
           }}
         >
           <div
