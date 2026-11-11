@@ -27,6 +27,7 @@ class SpaceResponse(BaseModel):
     access_policy: str
     requires_approval: bool
     image_url: str | None
+    images: list[str]
     map_x: float | None
     map_y: float | None
     building_code: str

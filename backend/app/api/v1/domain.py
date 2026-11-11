@@ -31,6 +31,7 @@ ACTIVE_BOOKING_STATUSES = {"pending", "confirmed"}
 def space_options() -> tuple[Load, ...]:
     return (
         selectinload(Space.floor).selectinload(Floor.building),
+        selectinload(Space.images),
         selectinload(Space.workplaces),
         selectinload(Space.amenities).selectinload(SpaceAmenity.amenity),
         selectinload(Space.reviews),
@@ -88,6 +89,7 @@ def serialize_space(space: Space, busy_spaces: set[UUID], busy_workplaces: set[U
         access_policy=space.access_policy,
         requires_approval=space.requires_approval,
         image_url=space.image_url,
+        images=[image.image_url for image in space.images],
         map_x=float(space.map_x) if space.map_x is not None else None,
         map_y=float(space.map_y) if space.map_y is not None else None,
         building_code=space.floor.building.code,

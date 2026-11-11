@@ -30,6 +30,7 @@ export type Space = {
   access_policy: string;
   requires_approval: boolean;
   image_url: string | null;
+  images: string[];
   map_x: number | null;
   map_y: number | null;
   building_code: string;

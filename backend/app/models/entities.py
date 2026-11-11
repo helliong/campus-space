@@ -84,11 +84,34 @@ class Space(TimestampMixin, Base):
     map_y: Mapped[float | None] = mapped_column(Numeric(8, 2))
 
     floor: Mapped[Floor] = relationship(back_populates="spaces")
+    images: Mapped[list[SpaceImage]] = relationship(
+        back_populates="space",
+        cascade="all, delete-orphan",
+        order_by="SpaceImage.sort_order",
+    )
     workplaces: Mapped[list[Workplace]] = relationship(back_populates="space")
     amenities: Mapped[list[SpaceAmenity]] = relationship(back_populates="space")
     bookings: Mapped[list[Booking]] = relationship(back_populates="space")
     favorites: Mapped[list[Favorite]] = relationship(back_populates="space", cascade="all, delete-orphan")
     reviews: Mapped[list[Review]] = relationship(back_populates="space", cascade="all, delete-orphan")
+
+
+class SpaceImage(TimestampMixin, Base):
+    __tablename__ = "space_images"
+    __table_args__ = (
+        UniqueConstraint("space_id", "sort_order", name="uq_space_images_space_order"),
+        CheckConstraint("sort_order >= 0", name="ck_space_images_sort_order_nonnegative"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    space_id: Mapped[UUID] = mapped_column(
+        ForeignKey("spaces.id", ondelete="CASCADE"), index=True
+    )
+    image_url: Mapped[str] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer)
+    alt_text: Mapped[str | None] = mapped_column(String(300))
+
+    space: Mapped[Space] = relationship(back_populates="images")
 
 
 class Workplace(TimestampMixin, Base):

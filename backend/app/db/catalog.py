@@ -5,7 +5,15 @@ from uuid import UUID, uuid5
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Amenity, Building, Floor, Space, SpaceAmenity, Workplace
+from app.models.entities import (
+    Amenity,
+    Building,
+    Floor,
+    Space,
+    SpaceAmenity,
+    SpaceImage,
+    Workplace,
+)
 
 
 CATALOG_NAMESPACE = UUID("9e53daca-8988-4ba8-af5b-a73ed9f46cf2")
@@ -27,7 +35,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 12,
         "map_y": 18,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/a-201.jpg",
+        "images": (
+            "/images/spaces/a-201.jpg",
+            "/images/spaces/a-201-2.jpg",
+            "/images/spaces/a-201-3.jpg",
+        ),
         "amenities": ("wifi", "projector", "whiteboard"),
     },
     {
@@ -41,7 +54,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 36,
         "map_y": 18,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/a-202.jpg",
+        "images": (
+            "/images/spaces/a-202.jpg",
+            "/images/spaces/a-202-2.jpg",
+            "/images/spaces/a-202-3.jpg",
+        ),
         "amenities": ("wifi", "whiteboard"),
     },
     {
@@ -55,7 +73,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": True,
         "map_x": 62,
         "map_y": 18,
-        "image_url": "/images/spaces/l-305.jpg",
+        "image_url": "/images/spaces/l-203.jpg",
+        "images": (
+            "/images/spaces/l-203.jpg",
+            "/images/spaces/l-203-2.jpg",
+            "/images/spaces/l-203-3.jpg",
+        ),
         "amenities": ("wifi", "projector", "whiteboard", "computers"),
     },
     {
@@ -69,7 +92,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 12,
         "map_y": 55,
-        "image_url": "/images/spaces/k-104.jpg",
+        "image_url": "/images/spaces/k-214.jpg",
+        "images": (
+            "/images/spaces/k-214.jpg",
+            "/images/spaces/k-214-2.jpg",
+            "/images/spaces/k-214-3.jpg",
+        ),
         "amenities": ("wifi", "computers"),
     },
     {
@@ -84,6 +112,11 @@ SPACE_DEFINITIONS = (
         "map_x": 38,
         "map_y": 55,
         "image_url": "/images/spaces/round-table-1.jpg",
+        "images": (
+            "/images/spaces/round-table-1.jpg",
+            "/images/spaces/round-table-2.jpg",
+            "/images/spaces/round-table-3.jpg",
+        ),
         "amenities": ("wifi", "projector"),
     },
     {
@@ -97,7 +130,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 64,
         "map_y": 55,
-        "image_url": "/images/spaces/p-1.jpg",
+        "image_url": "/images/spaces/p-2.jpg",
+        "images": (
+            "/images/spaces/p-2.jpg",
+            "/images/spaces/p-2-2.jpg",
+            "/images/spaces/p-2-3.jpg",
+        ),
         "amenities": ("wifi", "display", "video-conference"),
     },
     {
@@ -113,6 +151,11 @@ SPACE_DEFINITIONS = (
         "map_x": 55,
         "map_y": 6,
         "image_url": "/images/spaces/a-101.jpg",
+        "images": (
+            "/images/spaces/a-101.jpg",
+            "/images/spaces/a-101-2.jpg",
+            "/images/spaces/a-101-3.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -128,6 +171,11 @@ SPACE_DEFINITIONS = (
         "map_x": 5,
         "map_y": 6,
         "image_url": "/images/spaces/k-104.jpg",
+        "images": (
+            "/images/spaces/k-104.jpg",
+            "/images/spaces/k-104-2.jpg",
+            "/images/spaces/k-104-3.jpg",
+        ),
         "amenities": ('wifi', 'computers'),
     },
     {
@@ -143,6 +191,11 @@ SPACE_DEFINITIONS = (
         "map_x": 5,
         "map_y": 60,
         "image_url": "/images/spaces/p-1.jpg",
+        "images": (
+            "/images/spaces/p-1.jpg",
+            "/images/spaces/p-1-2.jpg",
+            "/images/spaces/p-1-3.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -157,7 +210,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 55,
         "map_y": 60,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/a-108.jpg",
+        "images": (
+            "/images/spaces/a-108.jpg",
+            "/images/spaces/a-108-2.jpg",
+            "/images/spaces/a-108-3.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -172,7 +230,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 3,
         "map_y": 6,
-        "image_url": "/images/spaces/k-104.jpg",
+        "image_url": "/images/spaces/k-304.jpg",
+        "images": (
+            "/images/spaces/k-304.jpg",
+            "/images/spaces/k-304-2.jpg",
+            "/images/spaces/k-304-3.jpg",
+        ),
         "amenities": ('wifi', 'computers'),
     },
     {
@@ -188,6 +251,11 @@ SPACE_DEFINITIONS = (
         "map_x": 3,
         "map_y": 57,
         "image_url": "/images/spaces/l-305.jpg",
+        "images": (
+            "/images/spaces/l-305.jpg",
+            "/images/spaces/l-305-1.jpg",
+            "/images/spaces/l-305-2.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -202,7 +270,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 59,
         "map_y": 6,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/a-301.jpg",
+        "images": (
+            "/images/spaces/a-301.jpg",
+            "/images/spaces/a-301-2.jpg",
+            "/images/spaces/a-301-3.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
     {
@@ -217,7 +290,12 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 59,
         "map_y": 57,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/a-308.jpg",
+        "images": (
+            "/images/spaces/a-308.jpg",
+            "/images/spaces/a-308-2.jpg",
+            "/images/spaces/a-308-3.jpg",
+        ),
         "amenities": ('wifi', 'projector', 'whiteboard'),
     },
 
@@ -317,6 +395,36 @@ async def ensure_campus_catalog(db: AsyncSession) -> None:
             for key, value in values.items():
                 setattr(space, key, value)
         space_by_key[str(definition["key"])] = space
+    await db.flush()
+
+    for definition in SPACE_DEFINITIONS:
+        space = space_by_key[str(definition["key"])]
+        expected_images = tuple(str(url) for url in definition["images"])
+        existing_images = (
+            await db.scalars(select(SpaceImage).where(SpaceImage.space_id == space.id))
+        ).all()
+        image_by_order = {image.sort_order: image for image in existing_images}
+
+        for sort_order, image_url in enumerate(expected_images):
+            image = image_by_order.get(sort_order)
+            if image is None:
+                db.add(
+                    SpaceImage(
+                        id=catalog_id(f"space-image-{definition['key']}-{sort_order}"),
+                        space_id=space.id,
+                        image_url=image_url,
+                        sort_order=sort_order,
+                        alt_text=f"{definition['name']}, фото {sort_order + 1}",
+                    )
+                )
+            else:
+                image.image_url = image_url
+                image.alt_text = f"{definition['name']}, фото {sort_order + 1}"
+
+        for image in existing_images:
+            if image.sort_order >= len(expected_images):
+                await db.delete(image)
+
     await db.flush()
 
     for definition in SPACE_DEFINITIONS:
