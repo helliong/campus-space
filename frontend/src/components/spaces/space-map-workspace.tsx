@@ -3,6 +3,8 @@
 import {
   Building2,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Heart,
   List,
@@ -568,76 +570,234 @@ function WorkplacePlan({ space, selectedId, onSelect }: { space: Space; selected
   );
 }
 
-const spaceImagesByCode: Record<string, string> = {
-  "К-104": "/images/spaces/k-104.jpg",
-  "К-214": "/images/spaces/k-104.jpg",
-  "К-304": "/images/spaces/k-104.jpg",
-  "А-101": "/images/spaces/a-101.jpg",
-  "А-108": "/images/spaces/a-101.jpg",
-  "А-201": "/images/spaces/a-101.jpg",
-  "А-202": "/images/spaces/a-101.jpg",
-  "А-208": "/images/spaces/a-101.jpg",
-  "А-301": "/images/spaces/a-101.jpg",
-  "А-308": "/images/spaces/a-101.jpg",
-  "П-1": "/images/spaces/p-1.jpg",
-  "П-2": "/images/spaces/p-1.jpg",
-  "Л-203": "/images/spaces/l-305.jpg",
-  "Л-305": "/images/spaces/l-305.jpg",
+const spaceGalleriesByCode: Record<string, string[]> = {
+  // Аудитория со схемой с круглым столом (А-208) - фотографии круглого стола
+  "А-208": [
+    "/images/spaces/round-table-1.jpg",
+    "/images/spaces/round-table-2.jpg",
+    "/images/spaces/round-table-3.jpg",
+  ],
+  // Коворкинги с компьютерами (К-104, К-214, К-304)
+  "К-104": [
+    "/images/spaces/k-104.jpg",
+    "/images/spaces/k-104-2.jpg",
+    "/images/spaces/k-104-3.jpg",
+  ],
+  "К-214": [
+    "/images/spaces/k-104.jpg",
+    "/images/spaces/k-104-2.jpg",
+    "/images/spaces/k-104-3.jpg",
+  ],
+  "К-304": [
+    "/images/spaces/k-104.jpg",
+    "/images/spaces/k-104-2.jpg",
+    "/images/spaces/k-104-3.jpg",
+  ],
+  // Учебные аудитории
+  "А-101": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  "А-108": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  "А-201": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  "А-202": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  "А-301": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  "А-308": [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ],
+  // Переговорные комнаты
+  "П-1": [
+    "/images/spaces/p-1.jpg",
+    "/images/spaces/p-1-2.jpg",
+    "/images/spaces/p-1-3.jpg",
+  ],
+  "П-2": [
+    "/images/spaces/p-1.jpg",
+    "/images/spaces/p-1-2.jpg",
+    "/images/spaces/p-1-3.jpg",
+  ],
+  // Лаборатории
+  "Л-203": [
+    "/images/spaces/l-305.jpg",
+    "/images/spaces/l-305-1.jpg",
+    "/images/spaces/l-305-2.jpg",
+  ],
+  "Л-305": [
+    "/images/spaces/l-305.jpg",
+    "/images/spaces/l-305-1.jpg",
+    "/images/spaces/l-305-2.jpg",
+  ],
 };
 
+function getSpaceImages(space: Space): string[] {
+  if (spaceGalleriesByCode[space.code]) return spaceGalleriesByCode[space.code];
+  if (space.space_type === "meeting_room" || space.capacity <= 6) {
+    return [
+      "/images/spaces/round-table-1.jpg",
+      "/images/spaces/round-table-2.jpg",
+      "/images/spaces/round-table-3.jpg",
+    ];
+  }
+  if (space.space_type === "coworking") {
+    return [
+      "/images/spaces/k-104.jpg",
+      "/images/spaces/k-104-2.jpg",
+      "/images/spaces/k-104-3.jpg",
+    ];
+  }
+  if (space.space_type === "laboratory") {
+    return [
+      "/images/spaces/l-305.jpg",
+      "/images/spaces/l-305-1.jpg",
+      "/images/spaces/l-305-2.jpg",
+    ];
+  }
+  return [
+    "/images/spaces/a-101.jpg",
+    "/images/spaces/a-101-2.jpg",
+    "/images/spaces/a-101-3.jpg",
+  ];
+}
+
 function getSpaceImageUrl(space: Space): string {
-  if (space.image_url) return space.image_url;
-  if (spaceImagesByCode[space.code]) return spaceImagesByCode[space.code];
-  if (space.space_type === "coworking") return "/images/spaces/k-104.jpg";
-  if (space.space_type === "laboratory") return "/images/spaces/l-305.jpg";
-  if (space.space_type === "meeting_room") return "/images/spaces/p-1.jpg";
-  return "/images/spaces/a-101.jpg";
+  const images = getSpaceImages(space);
+  return images[0] || (space.image_url ?? "/images/spaces/a-101.jpg");
 }
 
 function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedId: string; onSelect: (id: string) => void }) {
   const [mode, setMode] = useState<"photo" | "scheme">("photo");
-  const [imageFailed, setImageFailed] = useState(false);
-  const imageUrl = getSpaceImageUrl(space);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const images = getSpaceImages(space);
   const selectedWorkplace = space.workplaces.find((item) => item.id === selectedId);
-  const showPhoto = mode === "photo" && !imageFailed;
+
+  // Сброс индекса фотографии при смене помещения
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [space.id]);
+
+  const prevPhoto = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPhotoIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
+  const nextPhoto = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPhotoIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const currentImage = images[photoIndex] || images[0];
 
   return (
     <div className="relative overflow-hidden bg-[#F5F6FF]">
-      {showPhoto ? (
-        <div className="relative h-48 w-full overflow-hidden bg-[#EEF0FF]">
+      {mode === "photo" ? (
+        <div className="group relative h-48 w-full select-none overflow-hidden bg-[#EEF0FF]">
           <img
-            alt={`Фотография: ${space.name}`}
-            className="size-full object-cover transition-transform duration-300 hover:scale-105"
-            onError={() => setImageFailed(true)}
-            src={imageUrl}
+            alt={`Фотография ${photoIndex + 1} из ${images.length}: ${space.name}`}
+            className="size-full object-cover"
+            src={currentImage}
           />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-          <div className="absolute bottom-2.5 left-3 flex flex-wrap items-center gap-1.5">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/35" />
+
+          {/* Код помещения и счётчик слайдов */}
+          <div className="absolute left-3 top-2.5 flex items-center gap-1.5">
             <span className="rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
               {space.code}
             </span>
-            {selectedWorkplace && (
-              <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                Выбрано: {selectedWorkplace.code}
+            {images.length > 1 && (
+              <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm">
+                {photoIndex + 1} / {images.length}
               </span>
             )}
           </div>
+
+          {/* Переключатель Фото / Схема */}
           <div className="absolute right-2.5 top-2.5 flex rounded-lg bg-black/60 p-0.5 backdrop-blur-sm">
             <button
-              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", showPhoto ? "bg-white text-ink shadow-sm" : "text-white/80 hover:text-white")}
+              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", "bg-white text-ink shadow-sm")}
               onClick={() => setMode("photo")}
               type="button"
             >
               Фото
             </button>
             <button
-              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", !showPhoto ? "bg-white text-ink shadow-sm" : "text-white/80 hover:text-white")}
+              className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", "text-white/80 hover:text-white")}
               onClick={() => setMode("scheme")}
               type="button"
             >
               Схема
             </button>
           </div>
+
+          {/* Стрелки перелистывания карусели */}
+          {images.length > 1 && (
+            <>
+              <button
+                aria-label="Предыдущее фото"
+                className="absolute left-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white shadow-sm backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                onClick={prevPhoto}
+                type="button"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                aria-label="Следующее фото"
+                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white shadow-sm backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                onClick={nextPhoto}
+                type="button"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </>
+          )}
+
+          {/* Точечные индикаторы (буллеты) */}
+          {images.length > 1 && (
+            <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+              {images.map((_, idx) => (
+                <button
+                  aria-label={`Перейти к фото ${idx + 1}`}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all focus-visible:outline-none",
+                    idx === photoIndex ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"
+                  )}
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPhotoIndex(idx);
+                  }}
+                  type="button"
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Индикатор выбранного ПК */}
+          {selectedWorkplace && (
+            <div className="absolute bottom-2.5 left-3">
+              <span className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Выбрано: {selectedWorkplace.code}
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="p-4">
@@ -645,14 +805,14 @@ function SpacePreview({ space, selectedId, onSelect }: { space: Space; selectedI
             <p className="text-[10px] font-semibold text-[#667085]">Схема помещения · {space.code}</p>
             <div className="flex rounded-lg border border-[#E4E7EC] bg-white p-0.5 shadow-sm">
               <button
-                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", mode === "photo" ? "bg-brand text-white" : "text-[#667085] hover:text-ink")}
+                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", "text-[#667085] hover:text-ink")}
                 onClick={() => setMode("photo")}
                 type="button"
               >
                 Фото
               </button>
               <button
-                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", mode === "scheme" ? "bg-brand text-white" : "text-[#667085] hover:text-ink")}
+                className={cn("rounded-md px-2.5 py-1 text-[10px] font-semibold transition", "bg-brand text-white")}
                 onClick={() => setMode("scheme")}
                 type="button"
               >

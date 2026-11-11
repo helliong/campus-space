@@ -83,7 +83,7 @@ SPACE_DEFINITIONS = (
         "requires_approval": False,
         "map_x": 38,
         "map_y": 55,
-        "image_url": "/images/spaces/a-101.jpg",
+        "image_url": "/images/spaces/round-table-1.jpg",
         "amenities": ("wifi", "projector"),
     },
     {
