@@ -2,12 +2,11 @@
 
 import {
   Building2,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Heart,
   List,
+  LoaderCircle,
   Map as MapIcon,
   MapPin,
   Maximize2,
@@ -25,6 +24,7 @@ import { createPortal } from "react-dom";
 import { AccountHeader as AuthenticatedHeader } from "@/components/layout/account-header";
 import { SiteHeader } from "@/components/layout/site-header";
 import { Button, SelectField } from "@/components/ui";
+import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
 import { useApiData } from "@/hooks/use-api-data";
 import { apiRequest } from "@/lib/api";
 import { ensureAuthenticated } from "@/lib/auth";
@@ -135,6 +135,8 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "ru", { numeric: true }));
   }, [visibleSpaces]);
   const selected = visibleSpaces.find((space) => space.id === selectedId) ?? null;
+  const hasLoadedSpaces = spaces !== null;
+  const initialLoading = loading && !hasLoadedSpaces;
 
   const chooseSpace = (space: Space) => {
     setSelectedId(space.id);
@@ -224,20 +226,8 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
       <section className="border-b border-[#E4E7EC] bg-white">
         <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-end gap-3 px-5 py-3 sm:px-8 lg:px-16">
           <SelectFilter icon={Building2} label="Корпус" onChange={(value) => { setBuilding(value); setFloor(""); }} options={buildings} placeholder="Все корпуса" value={building} />
-          <label className="min-w-[150px] flex-1 xl:max-w-[200px]">
-            <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Дата</span>
-            <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3">
-              <CalendarDays className="size-4 text-[#667085]" />
-              <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-ink outline-none" min={localDate()} onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} />
-            </span>
-          </label>
-          <label className="min-w-[130px] flex-1 xl:max-w-[170px]">
-            <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[#667085]">Начало</span>
-            <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DFE3E9] bg-white px-3">
-              <Clock3 className="size-4 text-[#667085]" />
-              <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-ink outline-none" onChange={(event) => setSelectedTime(event.target.value)} step="1800" type="time" value={selectedTime} />
-            </span>
-          </label>
+          <DatePicker min={localDate()} onChange={setSelectedDate} value={selectedDate} />
+          <TimePicker onChange={setSelectedTime} value={selectedTime} />
           <div className="ml-auto flex items-center gap-2">
             <div className="flex rounded-[10px] bg-[#F0F2F5] p-1">
               <button aria-label="2D-карта" aria-pressed={view === "map"} className={cn("flex size-9 items-center justify-center rounded-lg", view === "map" ? "bg-white text-brand shadow-sm" : "text-[#667085]")} onClick={() => setView("map")} type="button"><MapIcon className="size-4" /></button>
@@ -273,16 +263,16 @@ export function SpaceMapWorkspace({ authenticated, initialBooking }: { authentic
           </div>
         </aside>
 
-        <section className="min-w-0 overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white">
+        <section aria-busy={loading} className="min-w-0 overflow-hidden rounded-[18px] border border-[#E1E5EA] bg-white">
           {view === "list" && <div className="border-b border-[#E7E9EE] px-5 py-4"><h1 className="text-xl font-bold text-ink">Пространства кампуса</h1><p className="mt-1 text-[11px] text-[#667085]">Данные о помещениях и доступности загружаются из системы.</p></div>}
-          {!loading && !error && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E7E9EE] px-5 py-3 text-xs text-[#667085]"><span role="status">Найдено помещений: {visibleSpaces.length} из {spaces?.length ?? 0}</span>{hasFilters && <button className="font-semibold text-brand" type="button" onClick={reset}>Сбросить фильтры</button>}</div>}
-          {loading && <LoadingState />}
-          {!loading && error && <ErrorState message={error} onRetry={reload} />}
-          {!loading && !error && visibleSpaces.length === 0 && (hasFilters ? <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><h2 className="text-base font-bold text-ink">Ничего не найдено</h2><p className="mt-2 text-xs leading-5 text-[#667085]">Измените вместимость или снимите часть фильтров.</p><button className="mt-4 text-sm font-semibold text-brand" onClick={reset} type="button">Сбросить фильтры</button></div> : <EmptyState />)}
-          {!loading && !error && visibleSpaces.length > 0 && view === "map" && (
+          {hasLoadedSpaces && <div className="flex min-h-[43px] flex-wrap items-center justify-between gap-2 border-b border-[#E7E9EE] px-5 py-3 text-xs text-[#667085]"><span>Найдено помещений: {visibleSpaces.length} из {spaces.length}</span><div className="flex items-center gap-3">{loading && <span className="inline-flex items-center gap-1.5 font-semibold text-brand" role="status"><LoaderCircle className="size-3.5 animate-spin" />Обновляем доступность</span>}{error && <button className="font-semibold text-[#D92D20]" onClick={reload} type="button">Не удалось обновить · Повторить</button>}{hasFilters && <button className="font-semibold text-brand" type="button" onClick={reset}>Сбросить фильтры</button>}</div></div>}
+          {initialLoading && <LoadingState />}
+          {!loading && !hasLoadedSpaces && error && <ErrorState message={error} onRetry={reload} />}
+          {hasLoadedSpaces && visibleSpaces.length === 0 && (hasFilters ? <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><h2 className="text-base font-bold text-ink">Ничего не найдено</h2><p className="mt-2 text-xs leading-5 text-[#667085]">Измените вместимость или снимите часть фильтров.</p><button className="mt-4 text-sm font-semibold text-brand" onClick={reset} type="button">Сбросить фильтры</button></div> : <EmptyState />)}
+          {hasLoadedSpaces && visibleSpaces.length > 0 && view === "map" && (
             <div className="divide-y divide-[#E7E9EE]">{mapFloors.map(([key, floorSpaces]) => <FigmaFloorMap key={key} onSelect={chooseSpace} onWorkplace={(space, id) => { chooseSpace(space); setSelectedWorkplaceId(id); }} selectedWorkplaceId={selectedWorkplaceId} selectedId={selectedId} spaces={floorSpaces} />)}</div>
           )}
-          {!loading && !error && visibleSpaces.length > 0 && view === "list" && (
+          {hasLoadedSpaces && visibleSpaces.length > 0 && view === "list" && (
             <div className="space-y-3 p-5">
               {visibleSpaces.map((space) => <SpaceItem key={space.id} onSelect={() => chooseSpace(space)} selected={space.id === selectedId} space={space} />)}
             </div>
