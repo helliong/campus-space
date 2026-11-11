@@ -1,10 +1,13 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { Bell, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/ui";
 import { useApiData } from "@/hooks/use-api-data";
+import { apiRequest } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatRole, initials } from "@/lib/format";
 import type { User } from "@/lib/types";
@@ -20,6 +23,81 @@ const navigation = [
 
 export function AccountHeader({ active }: AccountHeaderProps) {
   const { data: user } = useApiData<User>("/auth/me", true);
+  const router = useRouter();
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  function cancelOpenTimer() {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+  }
+
+  function scheduleProfileMenu() {
+    if (isProfileMenuOpen || openTimerRef.current) return;
+    openTimerRef.current = setTimeout(() => {
+      setIsProfileMenuOpen(true);
+      openTimerRef.current = null;
+    }, 500);
+  }
+
+  function closeProfileMenu() {
+    cancelOpenTimer();
+    setIsProfileMenuOpen(false);
+  }
+
+  async function handleLogout() {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await apiRequest("/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    } catch {
+      // Clear the local session even if the server is temporarily unavailable.
+    } finally {
+      window.localStorage.removeItem("access_token");
+      router.replace("/login");
+      router.refresh();
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (openTimerRef.current) clearTimeout(openTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+
+    function dismissMenu() {
+      if (openTimerRef.current) {
+        clearTimeout(openTimerRef.current);
+        openTimerRef.current = null;
+      }
+      setIsProfileMenuOpen(false);
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!profileMenuRef.current?.contains(event.target as Node)) dismissMenu();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") dismissMenu();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProfileMenuOpen]);
 
   return (
     <header className="border-b border-[#E4E7EC] bg-white">
@@ -45,13 +123,66 @@ export function AccountHeader({ active }: AccountHeaderProps) {
           <button aria-label="Уведомления" className="relative flex size-10 items-center justify-center rounded-xl bg-canvas text-[#667085] transition-colors hover:text-ink" type="button">
             <Bell aria-hidden className="size-4" />
           </button>
-          <Link aria-label="Открыть личный кабинет" className="flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35" href="/dashboard">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EEF0FF] text-xs font-bold text-brand">{user ? initials(user.full_name) : ""}</span>
-            <span className="hidden min-w-[86px] sm:block">
-              <span className="block max-w-[150px] truncate text-xs font-semibold text-ink">{user?.full_name ?? "Профиль"}</span>
-              <span className="mt-0.5 block text-[10px] text-[#667085]">{user ? formatRole(user.role) : ""}</span>
-            </span>
-          </Link>
+          <div
+            className="relative"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) closeProfileMenu();
+            }}
+            onFocus={() => {
+              cancelOpenTimer();
+              setIsProfileMenuOpen(true);
+            }}
+            onMouseEnter={scheduleProfileMenu}
+            onMouseLeave={closeProfileMenu}
+            ref={profileMenuRef}
+          >
+            <button
+              aria-expanded={isProfileMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Открыть меню профиля"
+              className="flex items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35"
+              onClick={() => {
+                cancelOpenTimer();
+                setIsProfileMenuOpen(true);
+              }}
+              type="button"
+            >
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EEF0FF] text-xs font-bold text-brand">{user ? initials(user.full_name) : ""}</span>
+              <span className="hidden min-w-[86px] sm:block">
+                <span className="block max-w-[150px] truncate text-xs font-semibold text-ink">{user?.full_name ?? "Профиль"}</span>
+                <span className="mt-0.5 block text-[10px] text-[#667085]">{user ? formatRole(user.role) : ""}</span>
+              </span>
+            </button>
+
+            {isProfileMenuOpen ? (
+              <div
+                aria-label="Меню профиля"
+                className="absolute right-0 top-[calc(100%+12px)] z-50 w-[220px] rounded-[14px] border border-[#E4E7EC] bg-white p-2 shadow-[0_14px_36px_rgba(16,24,40,0.14)]"
+                role="menu"
+              >
+                <Link
+                  className="flex h-11 items-center gap-3 rounded-[10px] px-3 text-[13px] font-medium text-ink transition-colors hover:bg-canvas focus-visible:bg-canvas focus-visible:outline-none"
+                  href="/dashboard/settings"
+                  onClick={closeProfileMenu}
+                  role="menuitem"
+                >
+                  <Settings aria-hidden className="size-4 text-[#667085]" />
+                  Настройки
+                </Link>
+                <div className="my-1 border-t border-[#EAECF0]" role="separator" />
+                <button
+                  className="flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-[13px] font-medium text-[#D92D20] transition-colors hover:bg-[#FEF3F2] focus-visible:bg-[#FEF3F2] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                  disabled={isLoggingOut}
+                  onClick={handleLogout}
+                  role="menuitem"
+                  type="button"
+                >
+                  <LogOut aria-hidden className="size-4" />
+                  {isLoggingOut ? "Выходим…" : "Выйти из аккаунта"}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>

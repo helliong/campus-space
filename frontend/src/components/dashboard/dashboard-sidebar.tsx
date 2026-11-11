@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, CalendarDays, Heart, Home, Settings, Star } from "lucide-react";
+import { Bell, CalendarDays, Heart, Home, Star } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -12,7 +12,6 @@ const items = [
   { href: "/dashboard/favorites", label: "Избранное", icon: Heart },
   { href: "/dashboard/reviews", label: "Мои отзывы", icon: Star },
   { href: "/dashboard/notifications", label: "Уведомления", icon: Bell },
-  { href: "/dashboard/settings", label: "Настройки", icon: Settings },
 ];
 
 export function DashboardSidebar() {
